@@ -1,1 +1,36 @@
+# --- Build & Output Artifacts ---
 build/
+bin/
+obj/
+out/
+*.exe
+*.out
+*.app
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+
+# --- CMake Generated Files ---
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# --- IDE & Editor Specific ---
+.vscode/
+.vs/
+.idea/
+*.swp
+*.bak
+*.log
+.cache/
+
+# --- Dependency Managers ---
+vcpkg_installed/

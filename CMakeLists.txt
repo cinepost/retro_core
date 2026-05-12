@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(my_core_libretro MODULE
     src/core.cpp
+    src/types.cpp
     src/renderer.cpp
     src/renderer_vdp8.cpp
 )

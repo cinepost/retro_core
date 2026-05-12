@@ -2,6 +2,7 @@
 #define __RETRO_CORE_RENDERER_H
 
 #include "debug_data.h"
+#include "types.h"
 
 #include <cstdint>
 #include <vector>
@@ -12,33 +13,15 @@ namespace RetroCore {
 
 class Renderer {
 	public:
-		struct SpriteBase {
-			uint8_t width;
-			uint8_t height;
-		};
-
-		struct Coord {
-			uint32_t x;
-			uint32_t y;
-
-			Coord(): x(0u), y(0u) {}
-			Coord(uint32_t _x, uint32_t _y): x(_x), y(_y) {}
-		};
-
-		struct CoordRel {
-			int x;
-			int y;
-
-			CoordRel(): x(0), y(0) {}
-		};
+		using Coord = RetroCore::Coord;
+		using CoordRel = RetroCore::CoordRel;
+		using CursorType = DebugData::CursorType;
 
 		enum class BlitMode { 
 			REPLACE,
 			XOR,
 			OVER, 
 		};
-
-		using CursorType = DebugData::CursorType;
 
 		Renderer();
 
@@ -56,7 +39,7 @@ class Renderer {
 
 		uint32_t getFramebufferStride() const { return mFramebufferStride; }
 		uint16_t getFramebufferWidth() const { return mFramebufferWidth; }
-		uint16_t getFramebufferHeight()const { return mFramebufferHeight; }
+		uint16_t getFramebufferHeight() const { return mFramebufferHeight; }
 
 		void setShowDebugInfoState(bool state) { mShowDebugInfo = state; }
 		bool getShowDebugInfoState() const { return mShowDebugInfo; }

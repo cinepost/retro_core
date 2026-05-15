@@ -2,6 +2,7 @@
 #define __RETRO_CORE_RENDERER_H
 
 #include "debug_data.h"
+#include "renderer_utils.h"
 #include "types.h"
 
 #include <cstdint>
@@ -10,6 +11,15 @@
 
 
 namespace RetroCore {
+
+template <VDP_Profile VDP>
+class CRAM {
+	public:
+		using CRAM_Line = std::array<char, getCRAMLineSize(VDP)>;
+
+	private:
+
+};
 
 class RendererBase {
 	public:
@@ -57,28 +67,7 @@ class Renderer: public RendererBase {
 		const Coord& getDebugCursorPos() const { return mDebugCursorPos; }
 
 	protected:
-		virtual bool renderImpl(uint8_t* pFrameData, uint32_t stride_bytes) = 0;
-
-		// Translates internal native bits (e.g., 3-bit RGB) to 32-bit RGBA for screen output
-		uint32_t nativeToRGBA8888(uint16_t nativeColor) {
-			if constexpr (VDP == VDP_Profile::MD) { 
-				// Sega Megadrive
-				uint8_t r = ((nativeColor & 0x007) >> 0) * 36;
-				uint8_t g = ((nativeColor & 0x038) >> 3) * 36;
-				uint8_t b = ((nativeColor & 0x1C0) >> 6) * 36;
-				return (r << 24) | (g << 16) | (b << 8) | 0xFF;
-			} else if constexpr (VDP == VDP_Profile::SNES) { 
-				// SNES
-				uint8_t r = ((nativeColor & 0x001F) >> 0) * 8;
-				uint8_t g = ((nativeColor & 0x03E0) >> 5) * 8;
-				uint8_t b = ((nativeColor & 0x7C00) >> 10) * 8;
-				return (r << 24) | (g << 16) | (b << 8) | 0xFF;
-			} else if constexpr (VDP == VDP_Profile::NES) {
-				// NES
-				static_assert("Unimplemented");
-			}
-			return 0x000000FF; // Fallback black
-		}
+		virtual bool renderImpl(void* pFrameData, uint32_t stride_bytes) = 0;
 
 	private:
 		bool _render(uint8_t* pFrameData, uint32_t stride_bytes, bool use_internal_buffer);
@@ -89,6 +78,9 @@ class Renderer: public RendererBase {
 		void blit(uint8_t* pFrameData, uint32_t stride_bytes, const uint8_t* pSrcData, uint16_t src_width, uint16_t src_height, int16_t dst_pos_x, int16_t dst_pos_y);
 		
 		void invertPixel(uint8_t* pFrameData, uint32_t stride_bytes, uint16_t x, uint16_t y);
+
+	protected:
+		std::vector<uint8_t> mNativeFramebuffer;
 
 	private:
 		bool		mIsInitialized;

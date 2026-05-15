@@ -20,7 +20,7 @@ class VDP_NES: public Renderer<VDP_Profile::NES> {
 		VDP_NES();
 
 	protected:
-		virtual bool renderImpl(uint8_t* pFrameData, uint32_t stride_bytes) override;
+		virtual bool renderImpl(void* pFrameData, uint32_t stride_bytes) override;
 };
 
 }  // namespace RetroCore

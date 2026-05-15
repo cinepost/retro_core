@@ -35,17 +35,15 @@ class Palette: public PaletteBase {
 		const std::array<Color, CNT>& getColors() const { return mColors; }
 		virtual uint32_t colorsCount() const override { return CNT; }
 
-		const Color& getColor(uint16_t index) {
+		const Color& getColor(uint16_t index) const {
 			static_assert(CNT >= 65536);
 			return mColors[index];
 		}
 
-		const Color& getNESColor(uint8_t index) {
+		const Color& getNESColor(uint8_t index) const {
 			static_assert(CNT == (64), "NES palette should have 64 colors!");
 			return mColors[index & 0x3F];
 		}
-	public:
-		static constexpr Palette<64> createNESPalette(const std::array<uint8_t, 192>& a);
 
 	private:
 		Palette() {};
@@ -53,6 +51,8 @@ class Palette: public PaletteBase {
 	private:
 		std::array<Color, CNT> mColors;
 };
+
+Palette<64> createNESPalette(const std::array<uint8_t, 192>& a);
 
 bool loadNESPalette(const std::string& filename, Palette<64>& palette);
 

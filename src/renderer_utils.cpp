@@ -2,7 +2,6 @@
 #define __RETRO_CORE_RENDERER_UTILS_H
 
 #include "debug_data.h"
-#include "types.h"
 
 #include <cstdint>
 #include <vector>

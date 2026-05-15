@@ -86,15 +86,16 @@ const uint8_t* Renderer<VDP>::render(uint8_t* pFrameData, uint32_t stride_bytes)
 template<VDP_Profile VDP>
 bool Renderer<VDP>::_render(uint8_t* pFrameData, uint32_t stride_bytes, bool use_internal_buffer) {
 	static uint32_t s_square_size = 16;
-	if(mShowDebugInfo) {
-		drawDebugBackground(pFrameData, stride_bytes, s_square_size);
-		drawDebugCursor(pFrameData, stride_bytes);
-	}
+	if(mShowDebugInfo) drawDebugBackground(pFrameData, stride_bytes, s_square_size);
+	
+	const bool result = renderImpl(mNativeFramebuffer.data(), stride_bytes);
+
+	if(mShowDebugInfo) drawDebugCursor(pFrameData, stride_bytes);
 
 	s_square_size++;
 	if(s_square_size >= 32) s_square_size = 8;
 
-	return renderImpl(pFrameData, stride_bytes);
+	return result;
 }
 
 template<VDP_Profile VDP>

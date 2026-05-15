@@ -8,7 +8,7 @@
 namespace RetroCore {
 
 template<uint32_t CNT>
-constexpr Palette<64> Palette<CNT>::createNESPalette(const std::array<uint8_t, 192>& a) {
+constexpr Palette<64> createNESPalette(const std::array<uint8_t, 192>& a) {
 	static_assert(CNT == 64);
 	Palette<64> palette;
 
@@ -38,7 +38,7 @@ bool loadNESPalette(const std::string& filename, Palette<64>& palette) {
         return false;
     }
 
-    palette = Palette<64>::createNESPalette(nes_values);
+    palette = createNESPalette(nes_values);
 
     return true;
 }

@@ -2,13 +2,19 @@
 #define __RETRO_CORE_RENDERER_UTILS_H
 
 #include "palette.h"
+#include "types.h"
 
 #include <cstdint>
+#include <cstring>
 #include <vector>
 #include <cassert>
 
 
 namespace RetroCore {
+
+constexpr size_t getCRAMLineSize(const VDP_Profile& vdp) {
+	return 10;
+}
 
 // Translates internal native bits (e.g., 3-bit RGB) to 32-bit RGBA for screen output
 template <VDP_Profile VDP>
@@ -34,7 +40,8 @@ template <VDP_Profile VDP>
 uint32_t nativeToRGBA8888(uint8_t nativeColor) {
 	if constexpr (VDP == VDP_Profile::NES) { 
 		// NES
-		static const Palette<VDP> sPalette = createNESPalette({ 
+		// nativeColor here is an index into NTSC/PAL to RGB palette
+		static const Palette<64> sPalette = createNESPalette({ 
 			0x6b, 0x6b, 0x6b, 0x00, 0x1b, 0x87, 0x21, 0x00, 0x9a, 0x40, 0x00, 0x8c,
 			0x60, 0x00, 0x67, 0x64, 0x00, 0x1e, 0x59, 0x08, 0x00, 0x46, 0x16, 0x00,
 			0x26, 0x36, 0x00, 0x00, 0x45, 0x00, 0x00, 0x47, 0x08, 0x00, 0x42, 0x1d,
@@ -52,7 +59,18 @@ uint32_t nativeToRGBA8888(uint8_t nativeColor) {
 			0xeb, 0xe5, 0xa1, 0xd2, 0xef, 0xa2, 0xbe, 0xf4, 0xb5, 0xb8, 0xf1, 0xd0,
 			0xb8, 0xed, 0xf1, 0xbd, 0xbd, 0xbd, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 
 		});
-		return sPalette.getNESColor(nativeColor);
+
+		uint32_t value;
+		std::memcpy(&value, sPalette.getNESColor(nativeColor).data(), 4);
+		return value;
+	} else if constexpr (VDP == VDP_Profile::SMS) {
+		// SMS (6-bit RGB)
+		// Hardware translates 2-bit values (0-3) to 8-bit color intensities
+		// Steps: 0 -> 0,  1 -> 85,  2 -> 170,  3 -> 255 (Value * 85)
+		uint8_t r = ((nativeColor & 0x03) >> 0) * 85;
+		uint8_t g = ((nativeColor & 0x0C) >> 2) * 85;
+		uint8_t b = ((nativeColor & 0x30) >> 4) * 85;
+		return (r << 24) | (g << 16) | (b << 8) | 0xFF;
 	} else {
 		static_assert("Unimplemented");
 	}

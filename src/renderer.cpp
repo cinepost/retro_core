@@ -12,9 +12,10 @@ namespace RetroCore {
 static const bool kDefaultShoeDebugInfoState = true;
 static constexpr uint16_t kMaxFramebufferAxisSize = std::numeric_limits<uint16_t>::max() / 2;
 static const uint8_t  kDefaultPixelStride = 4; // 4 bytes per pixel
-static const Renderer::CursorType kDefaultDebugCursorType = Renderer::CursorType::HAND;
+static const RendererBase::CursorType kDefaultDebugCursorType = RendererBase::CursorType::HAND;
 
-Renderer::Renderer(): mIsInitialized(false), 
+template<VDP_Profile VDP>
+Renderer<VDP>::Renderer(): mIsInitialized(false), 
 	mIsFramebufferClear(false), 
 	mIsExternalFramebufferClear(false),
 	mPixelStride(kDefaultPixelStride),
@@ -22,7 +23,8 @@ Renderer::Renderer(): mIsInitialized(false),
 	mDebugCursorType(kDefaultDebugCursorType) {
 }
 
-bool Renderer::init(uint16_t framebuffer_width, uint16_t framebuffer_height) {
+template<VDP_Profile VDP>
+bool Renderer<VDP>::init(uint16_t framebuffer_width, uint16_t framebuffer_height) {
 	assert(framebuffer_width > 0);
 	assert(framebuffer_height > 0);
 
@@ -40,19 +42,22 @@ bool Renderer::init(uint16_t framebuffer_width, uint16_t framebuffer_height) {
 	return mIsInitialized;
 }
 
-void Renderer::deinit() {
+template<VDP_Profile VDP>
+void Renderer<VDP>::deinit() {
 	if(!isInitialized()) {
 		return;
 	}
 }
 
-void Renderer::clearFramebuffer() {
+template<VDP_Profile VDP>
+void Renderer<VDP>::clearFramebuffer() {
 	if(mIsFramebufferClear) return;
 	std::memset(mFramebuffer.data(), 0, mFramebufferDataSize);
 	mIsFramebufferClear = true;
 }
 
-void Renderer::clearFramebuffer(uint8_t* pFrameData, uint32_t stride_bytes) {
+template<VDP_Profile VDP>
+void Renderer<VDP>::clearFramebuffer(uint8_t* pFrameData, uint32_t stride_bytes) {
 	if(mIsExternalFramebufferClear) return;
 	assert(pFrameData);
 
@@ -63,20 +68,23 @@ void Renderer::clearFramebuffer(uint8_t* pFrameData, uint32_t stride_bytes) {
 	mIsExternalFramebufferClear = true;
 }
 
-const uint8_t* Renderer::render() {
+template<VDP_Profile VDP>
+const uint8_t* Renderer<VDP>::render() {
 	const bool result = _render(mFramebuffer.data(), mFramebufferStride, true);
 	mIsFramebufferClear = false;
 	return mFramebuffer.data();
 }
 
-const uint8_t* Renderer::render(uint8_t* pFrameData, uint32_t stride_bytes) {
+template<VDP_Profile VDP>
+const uint8_t* Renderer<VDP>::render(uint8_t* pFrameData, uint32_t stride_bytes) {
 	assert(pFrameData);
 	const bool result = _render(pFrameData, stride_bytes, false);
 	mIsExternalFramebufferClear = false;
 	return pFrameData;
 }
 
-bool Renderer::_render(uint8_t* pFrameData, uint32_t stride_bytes, bool use_internal_buffer) {
+template<VDP_Profile VDP>
+bool Renderer<VDP>::_render(uint8_t* pFrameData, uint32_t stride_bytes, bool use_internal_buffer) {
 	static uint32_t s_square_size = 16;
 	if(mShowDebugInfo) {
 		drawDebugBackground(pFrameData, stride_bytes, s_square_size);
@@ -89,7 +97,8 @@ bool Renderer::_render(uint8_t* pFrameData, uint32_t stride_bytes, bool use_inte
 	return renderImpl(pFrameData, stride_bytes);
 }
 
-void Renderer::drawDebugBackground(uint8_t* pFrameData, uint32_t stride_bytes, uint32_t square_size, uint32_t color1, uint32_t color2) {
+template<VDP_Profile VDP>
+void Renderer<VDP>::drawDebugBackground(uint8_t* pFrameData, uint32_t stride_bytes, uint32_t square_size, uint32_t color1, uint32_t color2) {
 	std::vector<uint32_t> rowA(mFramebufferWidth);
     std::vector<uint32_t> rowB(mFramebufferWidth);
     
@@ -107,8 +116,8 @@ void Renderer::drawDebugBackground(uint8_t* pFrameData, uint32_t stride_bytes, u
     }
 }
 
-
-void Renderer::drawDebugCursor(uint8_t* pFrameData, uint32_t stride_bytes) {
+template<VDP_Profile VDP>
+void Renderer<VDP>::drawDebugCursor(uint8_t* pFrameData, uint32_t stride_bytes) {
 	switch(mDebugCursorType) {
 		case CursorType::HAND:
 			blit<BlitMode::OVER>(pFrameData, stride_bytes, DebugData::PointerHand.data(), DebugData::PointerHand.width, DebugData::PointerHand.height, mDebugCursorPos.x - DebugData::PointerHand.point_x, mDebugCursorPos.y - DebugData::PointerHand.point_y);
@@ -121,8 +130,9 @@ void Renderer::drawDebugCursor(uint8_t* pFrameData, uint32_t stride_bytes) {
 	//invertPixel(pFrameData, stride_bytes, mDebugCursorPos.x, mDebugCursorPos.y);
 }
 
-template <Renderer::BlitMode M>
-void Renderer::blit(uint8_t* pFrameData, uint32_t stride_bytes, const uint8_t* pSrcData, uint16_t src_width, uint16_t src_height, int16_t dst_pos_x, int16_t dst_pos_y) {
+template <VDP_Profile VDP>
+template <RendererBase::BlitMode M>
+void Renderer<VDP>::blit(uint8_t* pFrameData, uint32_t stride_bytes, const uint8_t* pSrcData, uint16_t src_width, uint16_t src_height, int16_t dst_pos_x, int16_t dst_pos_y) {
 	if(dst_pos_x >= mFramebufferWidth || dst_pos_y >= mFramebufferHeight || (dst_pos_x + src_height) < 0 || (dst_pos_y + src_height) < 0) return;
 
 	const uint16_t src_stride_bytes = src_width * mPixelStride;
@@ -197,7 +207,8 @@ void Renderer::blit(uint8_t* pFrameData, uint32_t stride_bytes, const uint8_t* p
 	}
 }
 
-void Renderer::invertPixel(uint8_t* pFrameData, uint32_t stride_bytes, uint16_t x, uint16_t y) {
+template<VDP_Profile VDP>
+void Renderer<VDP>::invertPixel(uint8_t* pFrameData, uint32_t stride_bytes, uint16_t x, uint16_t y) {
 	if(x >= mFramebufferWidth || y >= mFramebufferHeight || x < 0 || y < 0) return;
 	uint8_t* p = pFrameData + y * stride_bytes + x * mPixelStride;
 	p[0] = ~p[0];
@@ -205,27 +216,33 @@ void Renderer::invertPixel(uint8_t* pFrameData, uint32_t stride_bytes, uint16_t 
 	p[2] = ~p[2];
 }
 
-void Renderer::setDebugBackgroundPos(uint32_t x, uint32_t y) { 
+template<VDP_Profile VDP>
+void Renderer<VDP>::setDebugBackgroundPos(uint32_t x, uint32_t y) { 
 	mDebugBackgroundPos.x = x;
 	mDebugBackgroundPos.y = y;
 }
 
-void Renderer::setDebugCursorPos(uint32_t x, uint32_t y) { 
+template<VDP_Profile VDP>
+void Renderer<VDP>::setDebugCursorPos(uint32_t x, uint32_t y) { 
 	mDebugCursorPos.x = std::max(0u, std::min(mFramebufferWidth - 1u, x));
 	mDebugCursorPos.y = std::max(0u, std::min(mFramebufferHeight - 1u, y));
 }
 
-void Renderer::moveDebugCursor(int16_t x_delta, int16_t y_delta) {
+template<VDP_Profile VDP>
+void Renderer<VDP>::moveDebugCursor(int16_t x_delta, int16_t y_delta) {
 	mDebugCursorPos.x = std::max(0, std::min((int)mFramebufferWidth - 1,  (int)mDebugCursorPos.x + x_delta));
 	mDebugCursorPos.y = std::max(0, std::min((int)mFramebufferHeight - 1, (int)mDebugCursorPos.y + y_delta));
 }
 
-void Renderer::reset() {
+template<VDP_Profile VDP>
+void Renderer<VDP>::reset() {
 	clearFramebuffer();
 	mShowDebugInfo = kDefaultShoeDebugInfoState;
 	mDebugCursorType = kDefaultDebugCursorType;
 	mDebugBackgroundPos = Coord();
 	mDebugCursorPos = Coord(100, 100);
 }
+
+template class RetroCore::Renderer<RetroCore::VDP_Profile::NES>;
 
 }  // namespace RetroCore

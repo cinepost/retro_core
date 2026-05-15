@@ -6,12 +6,12 @@
 #include <math.h>
 
 #include "libretro.h"
-#include "renderer_vdp8.h"
+#include "renderer_nes.h"
 
 #define FRAMEBUFFER_WIDTH 448
 #define FRAMEBUFFER_HEIGHT 252
 
-static RetroCore::VDP8 gRenderer;
+static RetroCore::VDP_NES gRenderer;
 static struct retro_log_callback logging;
 static retro_log_printf_t log_cb;
 

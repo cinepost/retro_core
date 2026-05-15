@@ -6,10 +6,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(my_core_libretro MODULE
+    src/common.cpp
     src/core.cpp
     src/types.cpp
+    src/sprites.cpp
+    src/palette.cpp
     src/renderer.cpp
-    src/renderer_vdp8.cpp
+    src/renderer_utils.cpp
+    src/renderer_nes.cpp
 )
 
 set_target_properties(my_core_libretro PROPERTIES POSITION_INDEPENDENT_CODE ON

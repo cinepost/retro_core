@@ -11,7 +11,7 @@
 
 namespace RetroCore {
 
-class Renderer {
+class RendererBase {
 	public:
 		using Coord = RetroCore::Coord;
 		using CoordRel = RetroCore::CoordRel;
@@ -23,6 +23,11 @@ class Renderer {
 			OVER, 
 		};
 
+};
+
+template <VDP_Profile VDP>
+class Renderer: public RendererBase {
+	public:
 		Renderer();
 
 		bool init(uint16_t framebuffer_width, uint16_t framebuffer_height);
@@ -53,6 +58,27 @@ class Renderer {
 
 	protected:
 		virtual bool renderImpl(uint8_t* pFrameData, uint32_t stride_bytes) = 0;
+
+		// Translates internal native bits (e.g., 3-bit RGB) to 32-bit RGBA for screen output
+		uint32_t nativeToRGBA8888(uint16_t nativeColor) {
+			if constexpr (VDP == VDP_Profile::MD) { 
+				// Sega Megadrive
+				uint8_t r = ((nativeColor & 0x007) >> 0) * 36;
+				uint8_t g = ((nativeColor & 0x038) >> 3) * 36;
+				uint8_t b = ((nativeColor & 0x1C0) >> 6) * 36;
+				return (r << 24) | (g << 16) | (b << 8) | 0xFF;
+			} else if constexpr (VDP == VDP_Profile::SNES) { 
+				// SNES
+				uint8_t r = ((nativeColor & 0x001F) >> 0) * 8;
+				uint8_t g = ((nativeColor & 0x03E0) >> 5) * 8;
+				uint8_t b = ((nativeColor & 0x7C00) >> 10) * 8;
+				return (r << 24) | (g << 16) | (b << 8) | 0xFF;
+			} else if constexpr (VDP == VDP_Profile::NES) {
+				// NES
+				static_assert("Unimplemented");
+			}
+			return 0x000000FF; // Fallback black
+		}
 
 	private:
 		bool _render(uint8_t* pFrameData, uint32_t stride_bytes, bool use_internal_buffer);

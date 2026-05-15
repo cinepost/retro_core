@@ -1,6 +1,8 @@
 #ifndef __RETRO_CORE_FORMATS_H
 #define __RETRO_CORE_FORMATS_H
 
+#include "types.h"
+
 #include <cstdint>
 #include <cassert>
 
@@ -72,12 +74,28 @@ enum class PixelFormat: uint8_t {
     return (bits + 7) / 8;
 }
 
-[[nodiscard]] constexpr bool isIndexedColorFormat(PixelFormat format) noexcept {
-    return format <= PixelFormat::Indexed8BPP;
+[[nodiscard]] constexpr uint8_t bytesPerPixel(PixelFormat format) noexcept {
+	return bitsToBytesCount(bitsPerPixel(format));
+}
+
+[[nodiscard]] constexpr bool isIndexedColorFormat(const PixelFormat format) noexcept {
+	return format <= PixelFormat::Indexed8BPP && format != PixelFormat::NONE;
 }
 
 [[nodiscard]] constexpr bool hasAlphaChannel(PixelFormat format) noexcept {
     return format >= PixelFormat::RGBA1111;
+}
+
+[[nodiscard]] constexpr PixelFormat getVDPProfileNativeFramebufferFormat(const VDP_Profile profile) {
+	switch(profile) {
+		case VDP_Profile::SMS:
+			return PixelFormat::RGB222;
+		case VDP_Profile::NES:
+			return PixelFormat::Indexed4BPP;
+		default:
+			static_assert("Should not be here!");
+			return PixelFormat::NONE;
+	}
 }
 
 }  // namespace RetroCore

@@ -12,9 +12,41 @@
 
 namespace RetroCore {
 
-constexpr size_t getCRAMLineSize(const VDP_Profile& vdp) {
-	return 10;
+[[nodiscard]] constexpr uint32_t getCRAMLineSize(const VDP_Profile profile) {
+	switch(profile) {
+		case VDP_Profile::SMS:
+			// The SMS has a total CRAM capacity of 32 colors, divided cleanly into two 16-color palette lines. 
+			// Line 0 is reserved exclusively for background tiles. Line 1 (CRAM entries 16–31) is reserved exclusively for sprites.
+			return 16; 
+		case VDP_Profile::NES:
+			// Slot 0 of each individual sub-palette mirrors back to the global backdrop color (or functions as transparency for sprites), keeping the hard limit at 25
+			return 4; 
+		default:
+			static_assert("Should not be here!");
+	}
 }
+
+[[nodiscard]] constexpr uint32_t getCRAMLinesCount(const VDP_Profile profile) {
+	switch(profile) {
+		case VDP_Profile::SMS:
+			return 2; // Two 16-color palette lines
+		case VDP_Profile::NES:
+			return 8; // 4 sub-palettes for sprites and 4 sub-palettes for background
+		default:
+			static_assert("Should not be here!");
+	} 
+}
+
+[[nodiscard]] constexpr uint8_t getCRAMLineIndexMask(const VDP_Profile profile) {
+	uint8_t mask = 0;
+	uint32_t value = getCRAMLinesCount(profile);
+    while (value) {
+        mask += (value & 1);
+        value >>= 1;
+    }
+    return mask;
+}
+
 
 // Translates internal native bits (e.g., 3-bit RGB) to 32-bit RGBA for screen output
 template <VDP_Profile VDP>

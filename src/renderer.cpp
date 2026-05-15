@@ -20,13 +20,19 @@ Renderer<VDP>::Renderer(): mIsInitialized(false),
 	mIsExternalFramebufferClear(false),
 	mPixelStride(kDefaultPixelStride),
 	mShowDebugInfo(kDefaultShoeDebugInfoState),
-	mDebugCursorType(kDefaultDebugCursorType) {
+	mDebugCursorType(kDefaultDebugCursorType),
+	mNativeFramebufferPixelFormat(getVDPProfileNativeFramebufferFormat(VDP)),
+	mNativeFramebufferPixelStride(bytesPerPixel(getVDPProfileNativeFramebufferFormat(VDP)))
+{
+	assert(mNativeFramebufferPixelStride > 0);
 }
 
 template<VDP_Profile VDP>
 bool Renderer<VDP>::init(uint16_t framebuffer_width, uint16_t framebuffer_height) {
 	assert(framebuffer_width > 0);
 	assert(framebuffer_height > 0);
+	assert(mNativeFramebufferPixelFormat != PixelFormat::NONE);
+	assert(mNativeFramebufferPixelStride > 0);
 
 	mFramebufferWidth = std::min(kMaxFramebufferAxisSize, framebuffer_width);
 	mFramebufferHeight = std::min(kMaxFramebufferAxisSize, framebuffer_height);
@@ -34,6 +40,8 @@ bool Renderer<VDP>::init(uint16_t framebuffer_width, uint16_t framebuffer_height
 	mFramebufferStride = mFramebufferWidth * static_cast<uint32_t>(mPixelStride);
 	mFramebufferDataSize = mFramebufferStride * mFramebufferHeight;
 	mFramebuffer.resize(mFramebufferDataSize);
+
+	mNativeFramebuffer.resize(mFramebufferHeight * mFramebufferWidth * mNativeFramebufferPixelStride);
 
 	reset();
 

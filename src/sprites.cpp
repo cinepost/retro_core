@@ -8,6 +8,7 @@ namespace RetroCore {
 template <PixelFormat FMT>
 SpriteDataContainerBase::IndexType SpriteDataContainer<FMT>::appendSpriteData(uint32_t width, uint32_t height, const uint8_t* pSrc) {
 	// Each source sprite data row should be byte aligned
+	assert(bitsPerPixel(FMT) > 0);
 	uint32_t raw_stride = bitsToBytesCount(width * bitsPerPixel(FMT));
 
 	// Align individual rows to 64 bytes to optimize scanline thread reads and SIMD

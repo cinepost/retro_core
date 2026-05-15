@@ -17,7 +17,12 @@ class CRAM {
 	public:
 		using CRAM_Line = std::array<char, getCRAMLineSize(VDP)>;
 
+		const CRAM_Line& getCRAMLine(uint8_t index) const {
+			return mCRAMLines[index & getCRAMLineIndexMask(VDP)];
+		}
+
 	private:
+		std::array<CRAM_Line, getCRAMLinesCount(VDP)> mCRAMLines;
 
 };
 
@@ -79,9 +84,6 @@ class Renderer: public RendererBase {
 		
 		void invertPixel(uint8_t* pFrameData, uint32_t stride_bytes, uint16_t x, uint16_t y);
 
-	protected:
-		std::vector<uint8_t> mNativeFramebuffer;
-
 	private:
 		bool		mIsInitialized;
 		bool        mIsFramebufferClear;
@@ -99,6 +101,13 @@ class Renderer: public RendererBase {
 		Coord       mDebugCursorPos;
 
 		std::vector<uint8_t> mFramebuffer;
+
+		// VPD profile specific private members
+		PixelFormat mNativeFramebufferPixelFormat = PixelFormat::NONE;
+		uint8_t     mNativeFramebufferPixelStride = 0;
+
+		std::vector<uint8_t> mNativeFramebuffer;
+		CRAM<VDP>            mCRAM;
 };
 
 }  // namespace RetroCore

@@ -6,12 +6,14 @@
 #include <math.h>
 
 #include "libretro.h"
-#include "renderer_nes.h"
+#include "framework/vdp_nes.h"
+
 
 #define FRAMEBUFFER_WIDTH 448
 #define FRAMEBUFFER_HEIGHT 252
 
-static RetroCore::VDP_NES gRenderer;
+static RetroCore::VDP_NES gRenderer(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT);
+//static RetroCore::AudioProcessor<RetroCore::Platform::NES> gAPU(48000);
 static struct retro_log_callback logging;
 static retro_log_printf_t log_cb;
 
@@ -24,15 +26,17 @@ static void fallback_log(enum retro_log_level level, const char *fmt, ...) {
 }
 
 void retro_init(void) {
-   const bool result = gRenderer.init(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT);
+   const bool result = gRenderer.init();
    assert(result);
    if(!result) {
-      log_cb(RETRO_LOG_ERROR, "RetroCore::Renderer initializatoin failed !\n");
+      log_cb(RETRO_LOG_ERROR, "RetroCore::Renderer initialization failed !\n");
    }
 }
 
 void retro_deinit(void) {
-   gRenderer.deinit();
+   if(!gRenderer.deinit()) {
+      log_cb(RETRO_LOG_ERROR, "RetroCore::Renderer de-initialization failed !\n");
+   }
 }
 
 unsigned retro_api_version(void) {

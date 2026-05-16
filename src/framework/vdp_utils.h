@@ -1,8 +1,8 @@
-#ifndef __RETRO_CORE_RENDERER_UTILS_H
-#define __RETRO_CORE_RENDERER_UTILS_H
+#ifndef __RETRO_CORE_FRAMEWORK_VDP_UTILS_H
+#define __RETRO_CORE_FRAMEWORK_VDP_UTILS_H
 
 #include "palette.h"
-#include "types.h"
+#include "framework/types.h"
 
 #include <cstdint>
 #include <cstring>
@@ -12,13 +12,13 @@
 
 namespace RetroCore {
 
-[[nodiscard]] constexpr uint32_t getCRAMLineSize(const VDP_Profile profile) {
+[[nodiscard]] constexpr uint32_t getCRAMLineSize(const Platform profile) {
 	switch(profile) {
-		case VDP_Profile::SMS:
+		case Platform::SMS:
 			// The SMS has a total CRAM capacity of 32 colors, divided cleanly into two 16-color palette lines. 
 			// Line 0 is reserved exclusively for background tiles. Line 1 (CRAM entries 16–31) is reserved exclusively for sprites.
 			return 16; 
-		case VDP_Profile::NES:
+		case Platform::NES:
 			// Slot 0 of each individual sub-palette mirrors back to the global backdrop color (or functions as transparency for sprites), keeping the hard limit at 25
 			return 4; 
 		default:
@@ -26,18 +26,18 @@ namespace RetroCore {
 	}
 }
 
-[[nodiscard]] constexpr uint32_t getCRAMLinesCount(const VDP_Profile profile) {
+[[nodiscard]] constexpr uint32_t getCRAMLinesCount(const Platform profile) {
 	switch(profile) {
-		case VDP_Profile::SMS:
+		case Platform::SMS:
 			return 2; // Two 16-color palette lines
-		case VDP_Profile::NES:
+		case Platform::NES:
 			return 8; // 4 sub-palettes for sprites and 4 sub-palettes for background
 		default:
 			static_assert("Should not be here!");
 	} 
 }
 
-[[nodiscard]] constexpr uint8_t getCRAMLineIndexMask(const VDP_Profile profile) {
+[[nodiscard]] constexpr uint8_t getCRAMLineIndexMask(const Platform profile) {
 	uint8_t mask = 0;
 	uint32_t value = getCRAMLinesCount(profile);
     while (value) {
@@ -49,15 +49,15 @@ namespace RetroCore {
 
 
 // Translates internal native bits (e.g., 3-bit RGB) to 32-bit RGBA for screen output
-template <VDP_Profile VDP>
+template <Platform VDP>
 uint32_t nativeToRGBA8888(uint16_t nativeColor) {
-	if constexpr (VDP == VDP_Profile::MD) { 
+	if constexpr (VDP == Platform::MD) { 
 		// Sega Megadrive
 		uint8_t r = ((nativeColor & 0x007) >> 0) * 36;
 		uint8_t g = ((nativeColor & 0x038) >> 3) * 36;
 		uint8_t b = ((nativeColor & 0x1C0) >> 6) * 36;
 		return (r << 24) | (g << 16) | (b << 8) | 0xFF;
-	} else if constexpr (VDP == VDP_Profile::SNES) { 
+	} else if constexpr (VDP == Platform::SNES) { 
 		// SNES
 		uint8_t r = ((nativeColor & 0x001F) >> 0) * 8;
 		uint8_t g = ((nativeColor & 0x03E0) >> 5) * 8;
@@ -68,9 +68,9 @@ uint32_t nativeToRGBA8888(uint16_t nativeColor) {
 	}
 }
 
-template <VDP_Profile VDP>
+template <Platform VDP>
 uint32_t nativeToRGBA8888(uint8_t nativeColor) {
-	if constexpr (VDP == VDP_Profile::NES) { 
+	if constexpr (VDP == Platform::NES) { 
 		// NES
 		// nativeColor here is an index into NTSC/PAL to RGB palette
 		static const Palette<64> sPalette = createNESPalette({ 
@@ -95,7 +95,7 @@ uint32_t nativeToRGBA8888(uint8_t nativeColor) {
 		uint32_t value;
 		std::memcpy(&value, sPalette.getNESColor(nativeColor).data(), 4);
 		return value;
-	} else if constexpr (VDP == VDP_Profile::SMS) {
+	} else if constexpr (VDP == Platform::SMS) {
 		// SMS (6-bit RGB)
 		// Hardware translates 2-bit values (0-3) to 8-bit color intensities
 		// Steps: 0 -> 0,  1 -> 85,  2 -> 170,  3 -> 255 (Value * 85)
@@ -108,7 +108,6 @@ uint32_t nativeToRGBA8888(uint8_t nativeColor) {
 	}
 }
 
-
 }  // namespace RetroCore
 
-#endif  // __RETRO_CORE_RENDERER_UTILS_H
+#endif  // __RETRO_CORE_FRAMEWORK_VDP_UTILS_H

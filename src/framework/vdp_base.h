@@ -1,18 +1,18 @@
-#ifndef __RETRO_CORE_RENDERER_H
-#define __RETRO_CORE_RENDERER_H
+#ifndef __RETRO_CORE_FRAMEWORK_VDP_BASE_H
+#define __RETRO_CORE_FRAMEWORK_VDP_BASE_H
 
-#include "debug_data.h"
-#include "renderer_utils.h"
-#include "types.h"
+#include "framework/vdp_utils.h"
+#include "framework/types.h"
+#include "framework/static_data.h"
 
 #include <cstdint>
 #include <vector>
 #include <cassert>
-
+#include <limits>
 
 namespace RetroCore {
 
-template <VDP_Profile VDP>
+template <Platform VDP>
 class CRAM {
 	public:
 		using CRAM_Line = std::array<char, getCRAMLineSize(VDP)>;
@@ -38,15 +38,17 @@ class RendererBase {
 			OVER, 
 		};
 
+		virtual ~RendererBase() = default;
+
 };
 
-template <VDP_Profile VDP>
+template <Platform VDP>
 class Renderer: public RendererBase {
 	public:
-		Renderer();
+		Renderer(uint16_t framebuffer_width, uint16_t framebuffer_height);
 
-		bool init(uint16_t framebuffer_width, uint16_t framebuffer_height);
-		void deinit();
+		bool init();
+		bool deinit();
 		void reset();
 
 		const uint8_t* render();
@@ -72,6 +74,8 @@ class Renderer: public RendererBase {
 		const Coord& getDebugCursorPos() const { return mDebugCursorPos; }
 
 	protected:
+		virtual bool initImpl() { return true; }
+		virtual bool deinitImpl() { return true; }
 		virtual bool renderImpl(void* pFrameData, uint32_t stride_bytes) = 0;
 
 	private:
@@ -112,4 +116,4 @@ class Renderer: public RendererBase {
 
 }  // namespace RetroCore
 
-#endif  // __RETRO_CORE_RENDERER_H
+#endif  // __RETRO_CORE_FRAMEWORK_APU_BASE_H

@@ -1,5 +1,5 @@
-#ifndef __RETRO_CORE_COMMON_H
-#define __RETRO_CORE_COMMON_H
+#ifndef __RETRO_CORE_FRAMEWORK_COMMON_H
+#define __RETRO_CORE_FRAMEWORK_COMMON_H
 
 #include <cstdint>
 #include <cstring>
@@ -15,4 +15,4 @@ namespace RetroCore {
 
 }  // namespace RetroCore
 
-#endif  // __RETRO_CORE_COMMON_H
+#endif  // __RETRO_CORE_FRAMEWORK_COMMON_H

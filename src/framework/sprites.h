@@ -1,7 +1,7 @@
-#ifndef __RETRO_CORE_SPRITES_H
-#define __RETRO_CORE_SPRITES_H
+#ifndef __RETRO_CORE_FRAMEWORK_SPRITES_H
+#define __RETRO_CORE_FRAMEWORK_SPRITES_H
 
-#include "formats.h"
+#include "framework/formats.h"
 
 #include <cstdint>
 #include <cstring>
@@ -50,4 +50,4 @@ class SpriteDataContainer: public SpriteDataContainerBase {
 
 }  // namespace RetroCore
 
-#endif  // __RETRO_CORE_SPRITES_H
+#endif  // __RETRO_CORE_FRAMEWORK_SPRITES_H

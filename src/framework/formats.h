@@ -1,7 +1,8 @@
-#ifndef __RETRO_CORE_FORMATS_H
-#define __RETRO_CORE_FORMATS_H
+#ifndef __RETRO_CORE_FRAMEWORK_FORMATS_H
+#define __RETRO_CORE_FRAMEWORK_FORMATS_H
 
-#include "types.h"
+#include "framework/common.h"
+#include "framework/types.h"
 
 #include <cstdint>
 #include <cassert>
@@ -70,10 +71,6 @@ enum class PixelFormat: uint8_t {
 	}
 }
 
-[[nodiscard]] constexpr uint32_t bitsToBytesCount(uint32_t bits) noexcept {
-    return (bits + 7) / 8;
-}
-
 [[nodiscard]] constexpr uint8_t bytesPerPixel(PixelFormat format) noexcept {
 	return bitsToBytesCount(bitsPerPixel(format));
 }
@@ -86,11 +83,11 @@ enum class PixelFormat: uint8_t {
     return format >= PixelFormat::RGBA1111;
 }
 
-[[nodiscard]] constexpr PixelFormat getVDPProfileNativeFramebufferFormat(const VDP_Profile profile) {
+[[nodiscard]] constexpr PixelFormat getVDPProfileNativeFramebufferFormat(const Platform profile) {
 	switch(profile) {
-		case VDP_Profile::SMS:
+		case Platform::SMS:
 			return PixelFormat::RGB222;
-		case VDP_Profile::NES:
+		case Platform::NES:
 			return PixelFormat::Indexed4BPP;
 		default:
 			static_assert("Should not be here!");
@@ -100,4 +97,4 @@ enum class PixelFormat: uint8_t {
 
 }  // namespace RetroCore
 
-#endif  // __RETRO_CORE_FORMATS_H
+#endif  // __RETRO_CORE_FRAMEWORK_FORMATS_H

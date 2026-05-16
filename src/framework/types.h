@@ -1,5 +1,5 @@
-#ifndef __RETRO_CORE_TYPES_H
-#define __RETRO_CORE_TYPES_H
+#ifndef __RETRO_CORE_FRAMEWORK_TYPES_H
+#define __RETRO_CORE_FRAMEWORK_TYPES_H
 
 #include <cstdint>
 #include <cstring>
@@ -9,7 +9,7 @@
 
 namespace RetroCore {
 
-enum class VDP_Profile: uint8_t {
+enum class Platform: uint8_t {
 	NES,
 	SNES,
 	SMS,
@@ -35,4 +35,4 @@ struct CoordRel {
 
 }  // namespace RetroCore
 
-#endif  // __RETRO_CORE_TYPES_H
+#endif  // __RETRO_CORE_FRAMEWORK_TYPES_H

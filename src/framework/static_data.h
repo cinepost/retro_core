@@ -1,5 +1,5 @@
-#ifndef _RETRO_CORE_DEBUG_DATA_H
-#define _RETRO_CORE_DEBUG_DATA_H
+#ifndef _RETRO_CORE_FRAMEWORK_STATIC_DATA_H
+#define _RETRO_CORE_FRAMEWORK_STATIC_DATA_H
 
 #include <cstdint>
 #include <cstring>
@@ -107,4 +107,4 @@ namespace DebugData {
 
 }  // namespace RetroCore
 
-#endif  // _RETRO_CORE_DEBUG_DATA_H
+#endif  // _RETRO_CORE_FRAMEWORK_STATIC_DATA_H

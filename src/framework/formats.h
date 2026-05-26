@@ -83,7 +83,7 @@ enum class PixelFormat: uint8_t {
     return format >= PixelFormat::RGBA1111;
 }
 
-[[nodiscard]] constexpr PixelFormat getVDPProfileNativeFramebufferFormat(const Platform profile) {
+[[nodiscard]] constexpr PixelFormat getProfileNativeFramebufferPixelFormat(const Platform profile) {
 	switch(profile) {
 		case Platform::SMS:
 			return PixelFormat::RGB222;

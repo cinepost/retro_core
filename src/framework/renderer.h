@@ -1,9 +1,10 @@
-#ifndef __RETRO_CORE_FRAMEWORK_VDP_BASE_H
-#define __RETRO_CORE_FRAMEWORK_VDP_BASE_H
+#ifndef __RETRO_CORE_FRAMEWORK_RENDERER_H
+#define __RETRO_CORE_FRAMEWORK_RENDERER_H
 
 #include "framework/vdp_utils.h"
 #include "framework/types.h"
 #include "framework/static_data.h"
+#include "framework/ppu/ppu.h"
 
 #include <cstdint>
 #include <vector>
@@ -11,20 +12,6 @@
 #include <limits>
 
 namespace RetroCore {
-
-template <Platform VDP>
-class CRAM {
-	public:
-		using CRAM_Line = std::array<char, getCRAMLineSize(VDP)>;
-
-		const CRAM_Line& getCRAMLine(uint8_t index) const {
-			return mCRAMLines[index & getCRAMLineIndexMask(VDP)];
-		}
-
-	private:
-		std::array<CRAM_Line, getCRAMLinesCount(VDP)> mCRAMLines;
-
-};
 
 class RendererBase {
 	public:
@@ -38,14 +25,34 @@ class RendererBase {
 			OVER, 
 		};
 
+		static constexpr uint8_t sPixelStride = 4; // 4 bytes per pixel
+
 		virtual ~RendererBase() = default;
 
 };
 
-template <Platform VDP>
+template <Platform VDP, FramebufferDims FBDIMS, typename... PPUS>
+//requires (std::is_base_of_v<PPU::PPU_BASE, PPUS> && ...) 
 class Renderer: public RendererBase {
 	public:
-		Renderer(uint16_t framebuffer_width, uint16_t framebuffer_height);
+		static constexpr FramebufferDims sFramebufferSize = FBDIMS;
+		static constexpr bool kDefaultShoeDebugInfoState = true;
+		static constexpr uint16_t kMaxFramebufferAxisSize = std::numeric_limits<uint16_t>::max() / 2;
+		static constexpr RendererBase::CursorType kDefaultDebugCursorType = RendererBase::CursorType::HAND;
+
+	public:
+		explicit Renderer(PPUS&... ppus):
+		 	 mIsInitialized(false)
+		 	,mIsFramebufferClear(false)
+			,mIsExternalFramebufferClear(false)
+			,mShowDebugInfo(kDefaultShoeDebugInfoState)
+			,mDebugCursorType(kDefaultDebugCursorType)
+			,mPPUs(ppus...)
+
+		{
+			static_assert(FBDIMS.width > 0);
+			static_assert(FBDIMS.height > 0);
+		}
 
 		bool init();
 		bool deinit();
@@ -59,9 +66,12 @@ class Renderer: public RendererBase {
 
 		bool  isInitialized() const { return mIsInitialized; }
 
-		uint32_t getFramebufferStride() const { return mFramebufferStride; }
-		uint16_t getFramebufferWidth() const { return mFramebufferWidth; }
-		uint16_t getFramebufferHeight() const { return mFramebufferHeight; }
+		static uint32_t getFramebufferStride() { 
+			static constexpr uint32_t sFramebufferStride = FBDIMS.width * sPixelStride;
+			return sFramebufferStride; 
+		}
+		static uint16_t getFramebufferWidth() { return FBDIMS.width; }
+		static uint16_t getFramebufferHeight() { return FBDIMS.height; }
 
 		void setShowDebugInfoState(bool state) { mShowDebugInfo = state; }
 		bool getShowDebugInfoState() const { return mShowDebugInfo; }
@@ -72,11 +82,6 @@ class Renderer: public RendererBase {
 
 		const Coord& getDebugBackgroundPos() const { return mDebugBackgroundPos; }
 		const Coord& getDebugCursorPos() const { return mDebugCursorPos; }
-
-	protected:
-		virtual bool initImpl() { return true; }
-		virtual bool deinitImpl() { return true; }
-		virtual bool renderImpl(void* pFrameData, uint32_t stride_bytes) = 0;
 
 	private:
 		bool _render(uint8_t* pFrameData, uint32_t stride_bytes, bool use_internal_buffer);
@@ -93,9 +98,6 @@ class Renderer: public RendererBase {
 		bool        mIsFramebufferClear;
 		bool        mIsExternalFramebufferClear;
 
-		uint16_t 	mFramebufferWidth;
-		uint16_t 	mFramebufferHeight;
-		uint8_t     mPixelStride;
 		uint32_t    mFramebufferStride;
 		size_t      mFramebufferDataSize;
 
@@ -104,16 +106,12 @@ class Renderer: public RendererBase {
 		Coord       mDebugBackgroundPos;
 		Coord       mDebugCursorPos;
 
-		std::vector<uint8_t> mFramebuffer;
+		std::array<uint8_t, FBDIMS.width * FBDIMS.height * RendererBase::sPixelStride> mFramebuffer;
 
-		// VPD profile specific private members
-		PixelFormat mNativeFramebufferPixelFormat = PixelFormat::NONE;
-		uint8_t     mNativeFramebufferPixelStride = 0;
-
-		std::vector<uint8_t> mNativeFramebuffer;
-		CRAM<VDP>            mCRAM;
+	private:
+		std::tuple<PPUS&...> mPPUs;
 };
 
 }  // namespace RetroCore
 
-#endif  // __RETRO_CORE_FRAMEWORK_APU_BASE_H
+#endif  // __RETRO_CORE_FRAMEWORK_RENDERER_H

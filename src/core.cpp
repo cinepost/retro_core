@@ -6,14 +6,40 @@
 #include <math.h>
 
 #include "libretro.h"
-#include "framework/vdp_nes.h"
+
+#include "framework/renderer.h"
+#include "framework/sound_engine.h"
+#include "framework/apu/apu.h"
+#include "framework/apu/apu_nes.h"
+#include "framework/apu/apu_psg.h"
+#include "framework/apu/apu_ym2612.h"
+#include "framework/ppu/ppu_nes.h"
+
+#include <memory>
+
+//#define FRAMEBUFFER_WIDTH 448
+//#define FRAMEBUFFER_HEIGHT 256
+
+#define FRAMEBUFFER_WIDTH 512
+#define FRAMEBUFFER_HEIGHT 288
+
+#define TARGET_FPS 600.0
+#define TARGET_SAMPLE_RATE 44100.0
 
 
-#define FRAMEBUFFER_WIDTH 448
-#define FRAMEBUFFER_HEIGHT 252
+static constexpr RetroCore::FramebufferDims gResolution(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT);
 
-static RetroCore::VDP_NES gRenderer(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT);
-//static RetroCore::AudioProcessor<RetroCore::Platform::NES> gAPU(48000);
+static RetroCore::PPU::NesPPU<gResolution> gPPU0;
+static RetroCore::Renderer<RetroCore::Platform::NES, gResolution, RetroCore::PPU::NesPPU<gResolution>> gRenderer(gPPU0);
+
+static RetroCore::Sound::SoundEngine gSoundEngine;
+
+//static RetroCore::APU::HybridApu<RetroCore::APU::NesApu, RetroCore::APU::Ym2612Apu, RetroCore::APU::PsgApu> gAPU{
+//   RetroCore::APU::NesApu{},
+//   RetroCore::APU::Ym2612Apu{},
+//   RetroCore::APU::PsgApu{}
+//};
+
 static struct retro_log_callback logging;
 static retro_log_printf_t log_cb;
 
@@ -26,11 +52,45 @@ static void fallback_log(enum retro_log_level level, const char *fmt, ...) {
 }
 
 void retro_init(void) {
+   log_cb(RETRO_LOG_INFO, "RetroCore::Renderer initialization started.\n");
+   
    const bool result = gRenderer.init();
    assert(result);
+
+   // Init default font
+   size_t font_bytes_count = 0;
+   const uint8_t* pFontData = RetroCore::PPU::NesPPU_BASE::getDefaultFontData(font_bytes_count);
+   assert(pFontData);
+   assert(font_bytes_count > 0);
+   gPPU0.pushTiles<0>(pFontData, font_bytes_count, 0 /* push starting at tileIndex */);
+
    if(!result) {
       log_cb(RETRO_LOG_ERROR, "RetroCore::Renderer initialization failed !\n");
    }
+
+/*
+   gSoundEngine.init(&gAPU, RetroCore::Sound::SoundEngine::Config{16, 32, 64});
+
+   RetroCore::Sound::MidiToMusicTrackConfig midiConf;
+   midiConf.channelRouting[0] = {RetroCore::APU::ApuComponent::NES, 0, 127, 0};   // MIDI Ch 0 -> NES Pulse1
+   midiConf.channelRouting[1] = {RetroCore::APU::ApuComponent::NES, 1, 127, -32}; // MIDI Ch 1 -> NES Pulse2 (-64 pan -> -32 in our scale)
+   midiConf.channelRouting[2] = {RetroCore::APU::ApuComponent::YM2612, 0, 100, 0}; // MIDI Ch 2 -> Genesis FM1
+   midiConf.channelRouting[3] = {RetroCore::APU::ApuComponent::PSG, 0, 127, 0};   // MIDI Ch 3 -> PSG Ch A
+   midiConf.autoMapTempo = true;
+
+   RetroCore::Sound::MusicTrackData musicData;
+   if (RetroCore::Sound::MidiConverter::convert("/mnt/misc_hdd/dev/retro_core/assets/midi_files/boss.mid", musicData, midiConf)) {
+      // 4. Create & Play
+      uint32_t trackId = gSoundEngine.createTrack(musicData);
+      gSoundEngine.playTrack(trackId);
+    
+      // Optional: Override pan/volume after creation
+      gSoundEngine.setTrackVolume(trackId, 0.8f);
+      gSoundEngine.setTrackPan(trackId, 0.2f);
+   } else {
+      log_cb(RETRO_LOG_ERROR, "RetroCore::SoundEngine midi loading failed !\n");
+   }
+*/
 }
 
 void retro_deinit(void) {
@@ -66,8 +126,8 @@ void retro_get_system_av_info(struct retro_system_av_info *info) {
    float aspect = static_cast<float>(FRAMEBUFFER_WIDTH) / static_cast<float>(FRAMEBUFFER_HEIGHT);
 
    info->timing = (struct retro_system_timing) {
-      .fps = 60.0,
-      .sample_rate = 0.0,
+      .fps = TARGET_FPS,
+      .sample_rate = TARGET_SAMPLE_RATE,
    };
 
    info->geometry = (struct retro_game_geometry) {
@@ -153,11 +213,12 @@ static void update_input(void) {
 
 static void render(void) {
    /* Try rendering straight into VRAM if we can. */
+
    const uint8_t *buf = nullptr;
    uint32_t stride_bytes = gRenderer.getFramebufferStride();
    struct retro_framebuffer fb = {0};
-   fb.width = gRenderer.getFramebufferWidth();
-   fb.height = gRenderer.getFramebufferHeight();
+   fb.width = gResolution.width;
+   fb.height = gResolution.height;
    fb.access_flags = RETRO_MEMORY_ACCESS_WRITE;
    if (environ_cb(RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER, &fb) && fb.format == RETRO_PIXEL_FORMAT_XRGB8888) {
       stride_bytes = fb.pitch;
@@ -170,6 +231,7 @@ static void render(void) {
 
    assert(buf);
    video_cb(buf, FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, stride_bytes);
+
 }
 
 static void check_variables(void) {
@@ -195,12 +257,40 @@ void update_refresh_rate(double new_fps) {
 }
 
 void retro_run(void) {
-   assert(gRenderer.isInitialized());
-   update_refresh_rate(1000.0); // debug fps
+//   assert(gRenderer.isInitialized());
+   update_refresh_rate(TARGET_FPS); // debug fps
    update_input();
    render();
-   audio_callback();
 
+/*
+   size_t frames = TARGET_SAMPLE_RATE / TARGET_FPS;
+
+   gSoundEngine.writeRegister(0x4015, 0x01); // NES APU register
+   gSoundEngine.writeRegister(0x28, 0x30);   // Genesis FM register
+   gSoundEngine.writeRegister(0x00, 0x00);   // PSG Channel A period (Note: PSG uses 0x00-0x0F)
+
+   gSoundEngine.update(1.0f / TARGET_FPS);
+   static std::vector<float> audio_buf; 
+   audio_buf.resize(frames*2);
+   gSoundEngine.finalizeAudio(audio_buf.data(), frames);
+
+   //audio_callback();
+
+   // 3. Convert to int16 for libretro
+   static std::vector<int16_t> int16_buf;
+   if (int16_buf.size() != frames * 2) int16_buf.resize(frames * 2);
+    
+   for (size_t i = 0; i < frames * 2; ++i) {
+      int16_t s = static_cast<int16_t>(audio_buf[i] * 32767.0f);
+      //s = std::max(-32768, std::min(32767, s));
+      //s = i;
+      int16_buf[i] = s;
+   }
+
+   if (audio_batch_cb) {
+      audio_batch_cb(int16_buf.data(), frames);
+   }
+*/
    bool updated = false;
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && updated) {
       check_variables();

@@ -25,6 +25,16 @@ class Palette: public PaletteBase {
 			mColors = std::move(other.mColors);
 		}
 
+		constexpr Palette(const std::array<uint8_t, CNT*4>& a) {
+			size_t ii = 0;
+			for(size_t i = 0; i < CNT; ++i) {
+				mColors[i][0] = a[ii++];
+				mColors[i][1] = a[ii++];
+				mColors[i][2] = a[ii++];
+				mColors[i][3] = a[ii++];
+			}
+		}
+
 		void operator=(Palette<CNT>&& other) noexcept {
 			if (this != &other) {
 				mColors = std::move(other.mColors);
@@ -34,7 +44,6 @@ class Palette: public PaletteBase {
 		virtual const std::array<Color, CNT>& getColors() const { return mColors; }
 
 		const Color& getColor(uint16_t index) const {
-			static_assert(CNT >= 65536);
 			return mColors[index];
 		}
 

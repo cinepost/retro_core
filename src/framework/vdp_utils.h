@@ -1,16 +1,33 @@
 #ifndef __RETRO_CORE_FRAMEWORK_VDP_UTILS_H
 #define __RETRO_CORE_FRAMEWORK_VDP_UTILS_H
 
+#include "framework/common.h"
 #include "palette.h"
 #include "framework/types.h"
+#include "framework/formats.h"
 
 #include <cstdint>
 #include <cstring>
 #include <vector>
 #include <cassert>
+#include <limits>
 
 
 namespace RetroCore {
+
+static constexpr size_t sUint16Max = std::numeric_limits<uint16_t>::max();
+
+[[nodiscard]] constexpr size_t nativeFramebufferStride(const Platform profile, const uint16_t width) {
+	assert(width > 0 && width <= sUint16Max);
+	size_t bytes_per_line = static_cast<size_t>(bytesPerPixel(getProfileNativeFramebufferPixelFormat(profile))) * width;
+	assert(bytes_per_line <= sUint16Max);
+	return bytes_per_line;
+}
+
+[[nodiscard]] constexpr size_t nativeFramebufferSize(const Platform profile, const uint16_t width, const uint16_t height) {
+	assert(height > 0 && height <= sUint16Max);
+	return nativeFramebufferStride(profile, width) * height;
+}
 
 [[nodiscard]] constexpr uint32_t getCRAMLineSize(const Platform profile) {
 	switch(profile) {
@@ -47,6 +64,16 @@ namespace RetroCore {
     return mask;
 }
 
+template <typename M, typename T>
+[[nodiscard]] constexpr M getIndexMask(T index) {
+	M mask = 0;
+	uint32_t value = (uint32_t)(index);
+    while (value) {
+        mask += (value & 1);
+        value >>= 1;
+    }
+    return mask;
+}
 
 // Translates internal native bits (e.g., 3-bit RGB) to 32-bit RGBA for screen output
 template <Platform VDP>

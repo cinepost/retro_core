@@ -1,0 +1,9 @@
+Optimize ADSR
+
+SFX Priority/Stealing
+
+compact music pattern parser
+
+Complete the SoundEngine
+
+Design the MusicTrackData format (compact pattern encoding for chiptune)

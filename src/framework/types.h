@@ -1,11 +1,12 @@
 #ifndef __RETRO_CORE_FRAMEWORK_TYPES_H
 #define __RETRO_CORE_FRAMEWORK_TYPES_H
 
+#include "framework/int16.h"
+
 #include <cstdint>
 #include <cstring>
 #include <vector>
 #include <cassert>
-
 
 namespace RetroCore {
 
@@ -15,6 +16,11 @@ enum class Platform: uint8_t {
 	SMS,
 	MD,
 	TG16
+};
+
+struct FramebufferDims { 
+	uint16_t width; 
+	uint16_t height; 
 };
 
 struct Coord {

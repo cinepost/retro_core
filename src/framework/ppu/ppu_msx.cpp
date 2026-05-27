@@ -18,7 +18,13 @@ bool MsxPPU<FBDIMS, MODE>::deinit() {
 
 template <FramebufferDims FBDIMS, MsxPPU_BASE::Mode MODE>
 bool MsxPPU<FBDIMS, MODE>::render(uint8_t* pFrameData, uint32_t stride_bytes) {
+	static_assert(FBDIMS.height > 0);
+	const std::lock_guard<std::mutex> lock_frame(mFrameMutex);
 
+	mCollisionDetected = false;
+
+
+	mFrameNumber++;
 	return true;
 }
 
@@ -29,9 +35,8 @@ void MsxPPU<FBDIMS, MODE>::renderDebugScreen(uint8_t* pFrameData, uint32_t strid
 
 template class Abstract_PPU<Platform::MSX>;
 
-template class MsxPPU<{512, 288}, MsxPPU_BASE::Mode::TMS9918A>;
-template class MsxPPU<{512, 288}, MsxPPU_BASE::Mode::V9938>;
-template class MsxPPU<{512, 288}, MsxPPU_BASE::Mode::V9958>;
+template class MsxPPU<{512, 288}, MsxPPU_BASE::Mode::V_MODE1>;
+template class MsxPPU<{512, 288}, MsxPPU_BASE::Mode::V_MODE2>;
 
 }  // namespace PPU
 

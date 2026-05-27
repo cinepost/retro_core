@@ -77,6 +77,7 @@ class NesPPU_BASE: public Abstract_PPU<Platform::NES> {
 
 		// Set per-scanline callback
     	void setScanlineCallback(ScanlineCallback cb) {
+    		const std::lock_guard<std::mutex> lock_frame(mFrameMutex);
         	mScanlineCallback = cb;
     	}
 

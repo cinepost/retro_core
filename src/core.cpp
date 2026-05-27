@@ -32,7 +32,7 @@ static constexpr RetroCore::FramebufferDims gResolution(FRAMEBUFFER_WIDTH, FRAME
 
 // Some PPUs for testing
 static RetroCore::PPU::NesPPU<gResolution> gPPU0;
-static RetroCore::PPU::MsxPPU<gResolution, RetroCore::PPU::MsxPPU_BASE::Mode::TMS9918A> gPPU1;
+static RetroCore::PPU::MsxPPU<gResolution, RetroCore::PPU::MsxPPU_BASE::Mode::V_MODE1> gPPU1;
 
 // Main renderer
 //static RetroCore::Renderer<gResolution, RetroCore::PPU::NesPPU_BASE> gRenderer(gPPU0);

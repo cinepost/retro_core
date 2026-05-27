@@ -14,6 +14,7 @@
 #include "framework/apu/apu_psg.h"
 #include "framework/apu/apu_ym2612.h"
 #include "framework/ppu/ppu_nes.h"
+#include "framework/ppu/ppu_msx.h"
 
 #include <memory>
 
@@ -23,14 +24,19 @@
 #define FRAMEBUFFER_WIDTH 512
 #define FRAMEBUFFER_HEIGHT 288
 
-#define TARGET_FPS 600.0
+#define TARGET_FPS 60.0
 #define TARGET_SAMPLE_RATE 44100.0
 
 
 static constexpr RetroCore::FramebufferDims gResolution(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT);
 
+// Some PPUs for testing
 static RetroCore::PPU::NesPPU<gResolution> gPPU0;
-static RetroCore::Renderer<RetroCore::Platform::NES, gResolution, RetroCore::PPU::NesPPU<gResolution>> gRenderer(gPPU0);
+static RetroCore::PPU::MsxPPU<gResolution, RetroCore::PPU::MsxPPU_BASE::Mode::TMS9918A> gPPU1;
+
+// Main renderer
+//static RetroCore::Renderer<gResolution, RetroCore::PPU::NesPPU_BASE> gRenderer(gPPU0);
+static RetroCore::Renderer<gResolution, RetroCore::PPU::NesPPU_BASE, RetroCore::PPU::MsxPPU_BASE> gRenderer(gPPU0, gPPU1);
 
 static RetroCore::Sound::SoundEngine gSoundEngine;
 

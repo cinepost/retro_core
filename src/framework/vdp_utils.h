@@ -64,17 +64,6 @@ static constexpr size_t sUint16Max = std::numeric_limits<uint16_t>::max();
     return mask;
 }
 
-template <typename M, typename T>
-[[nodiscard]] constexpr M getIndexMask(T index) {
-	M mask = 0;
-	uint32_t value = (uint32_t)(index);
-    while (value) {
-        mask += (value & 1);
-        value >>= 1;
-    }
-    return mask;
-}
-
 // Translates internal native bits (e.g., 3-bit RGB) to 32-bit RGBA for screen output
 template <Platform VDP>
 uint32_t nativeToRGBA8888(uint16_t nativeColor) {
@@ -119,9 +108,7 @@ uint32_t nativeToRGBA8888(uint8_t nativeColor) {
 			0xb8, 0xed, 0xf1, 0xbd, 0xbd, 0xbd, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 
 		});
 
-		uint32_t value;
-		std::memcpy(&value, sPalette.getNESColor(nativeColor).data(), 4);
-		return value;
+		return sPalette.getNESColor(nativeColor);
 	} else if constexpr (VDP == Platform::SMS) {
 		// SMS (6-bit RGB)
 		// Hardware translates 2-bit values (0-3) to 8-bit color intensities

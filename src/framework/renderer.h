@@ -31,7 +31,7 @@ class RendererBase {
 
 };
 
-template <Platform VDP, FramebufferDims FBDIMS, typename... PPUS>
+template <FramebufferDims FBDIMS, typename... PPUS>
 //requires (std::is_base_of_v<PPU::PPU_BASE, PPUS> && ...) 
 class Renderer: public RendererBase {
 	public:
@@ -106,7 +106,7 @@ class Renderer: public RendererBase {
 		Coord       mDebugBackgroundPos;
 		Coord       mDebugCursorPos;
 
-		std::array<uint8_t, FBDIMS.width * FBDIMS.height * RendererBase::sPixelStride> mFramebuffer;
+		alignas(64) std::array<uint8_t, FBDIMS.width * FBDIMS.height * RendererBase::sPixelStride> mFramebuffer;
 
 	private:
 		std::tuple<PPUS&...> mPPUs;

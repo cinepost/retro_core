@@ -15,7 +15,8 @@ enum class Platform: uint8_t {
 	SNES,
 	SMS,
 	MD,
-	TG16
+	TG16,
+	MSX
 };
 
 struct FramebufferDims { 

@@ -1,5 +1,6 @@
 #include "framework/renderer.h"
 #include "framework/ppu/ppu_nes.h"
+#include "framework/ppu/ppu_msx.h"
 
 #include <omp.h>
 
@@ -10,8 +11,8 @@
 
 namespace RetroCore {
 
-template<Platform VDP, FramebufferDims FBDIMS, typename... PPUS>
-bool Renderer<VDP, FBDIMS, PPUS...>::init() {
+template<FramebufferDims FBDIMS, typename... PPUS>
+bool Renderer<FBDIMS, PPUS...>::init() {
 	reset();
 
 	if constexpr (sizeof...(PPUS) > 0) {
@@ -36,8 +37,8 @@ bool Renderer<VDP, FBDIMS, PPUS...>::init() {
 	return mIsInitialized;
 }
 
-template<Platform VDP, FramebufferDims FBDIMS, typename... PPUS>
-bool Renderer<VDP, FBDIMS, PPUS...>::deinit() {
+template<FramebufferDims FBDIMS, typename... PPUS>
+bool Renderer<FBDIMS, PPUS...>::deinit() {
 	if(!isInitialized()) return false;
 
 	if constexpr (sizeof...(PPUS) > 0) {
@@ -49,15 +50,15 @@ bool Renderer<VDP, FBDIMS, PPUS...>::deinit() {
 	return true;
 }
 
-template<Platform VDP, FramebufferDims FBDIMS, typename... PPUS>
-void Renderer<VDP, FBDIMS, PPUS...>::clearFramebuffer() {
+template<FramebufferDims FBDIMS, typename... PPUS>
+void Renderer<FBDIMS, PPUS...>::clearFramebuffer() {
 	if(mIsFramebufferClear) return;
 	std::memset(mFramebuffer.data(), 0, mFramebufferDataSize);
 	mIsFramebufferClear = true;
 }
 
-template<Platform VDP, FramebufferDims FBDIMS, typename... PPUS>
-void Renderer<VDP, FBDIMS, PPUS...>::clearFramebuffer(uint8_t* pFrameData, uint32_t stride_bytes) {
+template<FramebufferDims FBDIMS, typename... PPUS>
+void Renderer<FBDIMS, PPUS...>::clearFramebuffer(uint8_t* pFrameData, uint32_t stride_bytes) {
 	if(mIsExternalFramebufferClear) return;
 	assert(pFrameData);
 
@@ -68,23 +69,23 @@ void Renderer<VDP, FBDIMS, PPUS...>::clearFramebuffer(uint8_t* pFrameData, uint3
 	mIsExternalFramebufferClear = true;
 }
 
-template<Platform VDP, FramebufferDims FBDIMS, typename ...PPUS>
-const uint8_t* Renderer<VDP, FBDIMS, PPUS...>::render() {
+template<FramebufferDims FBDIMS, typename ...PPUS>
+const uint8_t* Renderer<FBDIMS, PPUS...>::render() {
 	const bool result = _render(mFramebuffer.data(), mFramebufferStride, true);
 	mIsFramebufferClear = false;
 	return mFramebuffer.data();
 }
 
-template<Platform VDP, FramebufferDims FBDIMS, typename ...PPUS>
-const uint8_t* Renderer<VDP, FBDIMS, PPUS...>::render(uint8_t* pFrameData, uint32_t stride_bytes) {
+template<FramebufferDims FBDIMS, typename ...PPUS>
+const uint8_t* Renderer<FBDIMS, PPUS...>::render(uint8_t* pFrameData, uint32_t stride_bytes) {
 	assert(pFrameData);
 	const bool result = _render(pFrameData, stride_bytes, false);
 	mIsExternalFramebufferClear = false;
 	return pFrameData;
 }
 
-template<Platform VDP, FramebufferDims FBDIMS, typename ...PPUS>
-bool Renderer<VDP, FBDIMS, PPUS...>::_render(uint8_t* pFrameData, uint32_t stride_bytes, bool use_internal_buffer) {
+template<FramebufferDims FBDIMS, typename ...PPUS>
+bool Renderer<FBDIMS, PPUS...>::_render(uint8_t* pFrameData, uint32_t stride_bytes, bool use_internal_buffer) {
 	static uint32_t s_square_size = 16;
 	if(mShowDebugInfo) drawDebugBackground(pFrameData, stride_bytes, s_square_size);
 	
@@ -105,8 +106,8 @@ bool Renderer<VDP, FBDIMS, PPUS...>::_render(uint8_t* pFrameData, uint32_t strid
 	return result;
 }
 
-template<Platform VDP, FramebufferDims FBDIMS, typename ...PPUS>
-void Renderer<VDP, FBDIMS, PPUS...>::drawDebugBackground(uint8_t* pFrameData, uint32_t stride_bytes, uint32_t square_size, uint32_t color1, uint32_t color2) {
+template<FramebufferDims FBDIMS, typename ...PPUS>
+void Renderer<FBDIMS, PPUS...>::drawDebugBackground(uint8_t* pFrameData, uint32_t stride_bytes, uint32_t square_size, uint32_t color1, uint32_t color2) {
 	static std::array<uint32_t, FBDIMS.width> rowA;
     static std::array<uint32_t, FBDIMS.width> rowB;
     
@@ -124,8 +125,8 @@ void Renderer<VDP, FBDIMS, PPUS...>::drawDebugBackground(uint8_t* pFrameData, ui
     }
 }
 
-template<Platform VDP, FramebufferDims FBDIMS, typename ...PPUS>
-void Renderer<VDP, FBDIMS, PPUS...>::drawDebugCursor(uint8_t* pFrameData, uint32_t stride_bytes) {
+template<FramebufferDims FBDIMS, typename ...PPUS>
+void Renderer<FBDIMS, PPUS...>::drawDebugCursor(uint8_t* pFrameData, uint32_t stride_bytes) {
 	switch(mDebugCursorType) {
 		case CursorType::HAND:
 			blit<BlitMode::OVER>(pFrameData, stride_bytes, DebugData::PointerHand.data(), DebugData::PointerHand.width, DebugData::PointerHand.height, mDebugCursorPos.x - DebugData::PointerHand.point_x, mDebugCursorPos.y - DebugData::PointerHand.point_y);
@@ -139,9 +140,9 @@ void Renderer<VDP, FBDIMS, PPUS...>::drawDebugCursor(uint8_t* pFrameData, uint32
 	}
 }
 
-template <Platform VDP, FramebufferDims FBDIMS, typename ...PPUS>
+template <FramebufferDims FBDIMS, typename ...PPUS>
 template <RendererBase::BlitMode M>
-void Renderer<VDP, FBDIMS, PPUS...>::blit(uint8_t* pFrameData, uint32_t stride_bytes, const uint8_t* pSrcData, uint16_t src_width, uint16_t src_height, int16_t dst_pos_x, int16_t dst_pos_y) {
+void Renderer<FBDIMS, PPUS...>::blit(uint8_t* pFrameData, uint32_t stride_bytes, const uint8_t* pSrcData, uint16_t src_width, uint16_t src_height, int16_t dst_pos_x, int16_t dst_pos_y) {
 	if(dst_pos_x >= FBDIMS.width || dst_pos_y >= FBDIMS.height || (dst_pos_x + src_height) < 0 || (dst_pos_y + src_height) < 0) return;
 
 	const uint16_t src_stride_bytes = src_width * sPixelStride;
@@ -216,8 +217,8 @@ void Renderer<VDP, FBDIMS, PPUS...>::blit(uint8_t* pFrameData, uint32_t stride_b
 	}
 }
 
-template<Platform VDP, FramebufferDims FBDIMS, typename... PPUS>
-void Renderer<VDP, FBDIMS, PPUS...>::invertPixel(uint8_t* pFrameData, uint32_t stride_bytes, uint16_t x, uint16_t y) {
+template<FramebufferDims FBDIMS, typename... PPUS>
+void Renderer<FBDIMS, PPUS...>::invertPixel(uint8_t* pFrameData, uint32_t stride_bytes, uint16_t x, uint16_t y) {
 	if(x >= FBDIMS.width || y >= FBDIMS.height || x < 0 || y < 0) return;
 	uint8_t* p = pFrameData + y * stride_bytes + x * sPixelStride;
 	p[0] = ~p[0];
@@ -225,26 +226,26 @@ void Renderer<VDP, FBDIMS, PPUS...>::invertPixel(uint8_t* pFrameData, uint32_t s
 	p[2] = ~p[2];
 }
 
-template<Platform VDP, FramebufferDims FBDIMS, typename... PPUS>
-void Renderer<VDP, FBDIMS, PPUS...>::setDebugBackgroundPos(uint32_t x, uint32_t y) { 
+template<FramebufferDims FBDIMS, typename... PPUS>
+void Renderer<FBDIMS, PPUS...>::setDebugBackgroundPos(uint32_t x, uint32_t y) { 
 	mDebugBackgroundPos.x = x;
 	mDebugBackgroundPos.y = y;
 }
 
-template<Platform VDP, FramebufferDims FBDIMS, typename... PPUS>
-void Renderer<VDP, FBDIMS, PPUS...>::setDebugCursorPos(uint32_t x, uint32_t y) { 
+template<FramebufferDims FBDIMS, typename... PPUS>
+void Renderer<FBDIMS, PPUS...>::setDebugCursorPos(uint32_t x, uint32_t y) { 
 	mDebugCursorPos.x = std::max(0u, std::min(FBDIMS.width - 1u, x));
 	mDebugCursorPos.y = std::max(0u, std::min(FBDIMS.height - 1u, y));
 }
 
-template<Platform VDP, FramebufferDims FBDIMS, typename... PPUS>
-void Renderer<VDP, FBDIMS, PPUS...>::moveDebugCursor(int16_t x_delta, int16_t y_delta) {
+template<FramebufferDims FBDIMS, typename... PPUS>
+void Renderer<FBDIMS, PPUS...>::moveDebugCursor(int16_t x_delta, int16_t y_delta) {
 	mDebugCursorPos.x = std::max(0, std::min((int)FBDIMS.width - 1,  (int)mDebugCursorPos.x + x_delta));
 	mDebugCursorPos.y = std::max(0, std::min((int)FBDIMS.height - 1, (int)mDebugCursorPos.y + y_delta));
 }
 
-template<Platform VDP, FramebufferDims FBDIMS, typename... PPUS>
-void Renderer<VDP, FBDIMS, PPUS...>::reset() {
+template<FramebufferDims FBDIMS, typename... PPUS>
+void Renderer<FBDIMS, PPUS...>::reset() {
 
 	std::apply([](auto&... ppu) {
         (ppu.reset(), ...);
@@ -257,6 +258,8 @@ void Renderer<VDP, FBDIMS, PPUS...>::reset() {
 	mDebugCursorPos = Coord(100, 100);
 }
 
-template class RetroCore::Renderer<RetroCore::Platform::NES, {512, 288}, PPU::NesPPU<{512, 288}>>;
+template class RetroCore::Renderer<{512, 288}, PPU::NesPPU_BASE>;
+template class RetroCore::Renderer<{512, 288}, PPU::MsxPPU_BASE>;
+template class RetroCore::Renderer<{512, 288}, PPU::NesPPU_BASE, PPU::MsxPPU_BASE>;
 
 }  // namespace RetroCore

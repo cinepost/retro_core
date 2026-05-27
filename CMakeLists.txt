@@ -34,6 +34,7 @@ add_library(my_core_libretro MODULE
     src/framework/vdp_utils.cpp
     src/framework/sound.cpp
     src/framework/ppu/ppu_nes.cpp
+    src/framework/ppu/ppu_msx.cpp
     src/framework/apu/apu_nes.cpp
     src/framework/apu/apu_psg.cpp
     src/framework/apu/apu_ym2612.cpp
@@ -52,6 +53,9 @@ target_include_directories(my_core_libretro PRIVATE
 	/usr/include/libretro-common
 	${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+
+# Target the current machine's hardware profile natively
+add_compile_options(-march=native)
 
 target_include_directories(my_core_libretro PRIVATE external/midifile/include)
 

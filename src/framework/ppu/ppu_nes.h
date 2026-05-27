@@ -159,16 +159,31 @@ class NesPPU_BASE: public Abstract_PPU<Platform::NES> {
 template <FramebufferDims FBDIMS>
 class NesPPU: public NesPPU_BASE {
 	public:
+		static constexpr uint16_t s_x_scroll_mask = isPowerOfTwo(FBDIMS.width) ? FBDIMS.width - 1 : std::numeric_limits<uint16_t>::max();
+		static constexpr uint16_t s_y_scroll_mask = isPowerOfTwo(FBDIMS.height) ? FBDIMS.height - 1 : std::numeric_limits<uint16_t>::max();
+        static constexpr size_t s_native_fb_stride_bytes = FBDIMS.width;
+
 		struct Nametable {
+			// Tile table constants
+			static constexpr uint16_t TILE_TBL_WIDTH = divideExact<FBDIMS.height, 8>();
+			static constexpr uint16_t TILE_TBL_HEIGHT = divideExact<FBDIMS.width, 8>();
+			
+			// Attribute table constants. 32x32 pixel coverage 2bit subpalette intex per 8x8 tile
+			static constexpr uint16_t ATTR_TBL_WIDTH = TILE_TBL_WIDTH / 4;
+			static constexpr uint16_t ATTR_TBL_HEIGHT = TILE_TBL_HEIGHT / 4;
+
+			static_assert((uint32_t)TILE_TBL_WIDTH * (uint32_t)TILE_TBL_HEIGHT <= (std::numeric_limits<uint16_t>::max() + 1));
+			static_assert(ATTR_TBL_WIDTH * 4 == TILE_TBL_WIDTH);
+			static_assert(ATTR_TBL_HEIGHT * 4 == TILE_TBL_HEIGHT);
+
 			using TileID = uint16_t;
-			using Attribute = uint8_t;
-			std::array<std::array<TileID, divideExact<FBDIMS.height, 8>()>, divideExact<FBDIMS.width, 8>()> tileMap; // ROW major nambetable
-			std::array<std::array<Attribute, divideExact<FBDIMS.height, 16>()>, divideExact<FBDIMS.width, 16>()> attributeTable; // ROW major nambetable
+			using Attrib = uint8_t;
+			std::array<TileID, TILE_TBL_WIDTH * TILE_TBL_HEIGHT> tileTable;
+			std::array<Attrib, ATTR_TBL_WIDTH * ATTR_TBL_HEIGHT> attrTable;
 		};
-		using Nametables = std::array<std::array<Nametable, 2>, 2>;
 
 		NesPPU(): NesPPU_BASE() {
-
+			assert(mNativeFramebuffer.size() == FBDIMS.width * FBDIMS.height);
 		}
 
 	public:
@@ -179,7 +194,20 @@ class NesPPU: public NesPPU_BASE {
 
 	public:
 		void setScroll(uint16_t x, uint16_t y) {
+			const std::lock_guard<std::mutex> lock_scanline(mScanlineMutex);
 
+			mScrollX = x & s_x_scroll_mask;
+			mScrollY = y & s_y_scroll_mask;
+		}
+
+		void setNametableTileID(uint8_t table_x, uint8_t table_y, uint16_t tile_x, uint16_t tile_y, Nametable::TileID tile_id) {
+			const std::lock_guard<std::mutex> lock_scanline(mScanlineMutex);
+			mNametables[table_y & 0x01][table_x & 0x01].tileTable[tile_x + tile_y] = tile_id;
+		}
+
+		void setNametableAttrib(uint8_t table_x, uint8_t table_y, uint16_t attr_x, uint16_t attr_y, uint8_t attrib) {
+			const std::lock_guard<std::mutex> lock_scanline(mScanlineMutex);
+			mNametables[table_y & 0x01][table_x & 0x01].attrTable[attr_x + attr_y] = attrib;
 		}
 
 	private:
@@ -188,9 +216,9 @@ class NesPPU: public NesPPU_BASE {
 
 	private:
 		// Internal PPU state and registers
-		Nametables mNametables; // 4 screen nametables
+		Nametable 	mNametables[2][2]; // 4 screen nametables
 
-		std::array<uint8_t, nativeFramebufferSize(Platform::NES, FBDIMS.width, FBDIMS.height)> mNativeFramebuffer;
+		alignas(64) std::array<uint8_t, nativeFramebufferSize(Platform::NES, FBDIMS.width, FBDIMS.height)> mNativeFramebuffer;
 };
 
 }  // namespace PPU

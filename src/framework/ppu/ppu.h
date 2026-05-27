@@ -25,7 +25,8 @@ class CRAM {
 		}
 
 		CRAM_Line& getCRAMLine(uint8_t index) {
-			static constexpr uint8_t sMask = getIndexMask<uint8_t, uint16_t>(LINES);
+			static_assert(isPowerOfTwo(LINES));
+			static constexpr uint8_t sMask = LINES - 1;
 			return mCRAMLines[index & sMask];
 		}
 

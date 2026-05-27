@@ -17,6 +17,10 @@ namespace RetroCore {
     #define UNROLL_64 // Fallback for MSVC (relies on template or /O2)
 #endif
 
+[[nodiscard]] constexpr bool isPowerOfTwo(size_t n) noexcept {
+    return n > 0 && (n & (n - 1)) == 0;
+}
+
 [[nodiscard]] constexpr uint32_t bitsToBytesCount(uint32_t bits) noexcept {
     return (bits + 7) / 8;
 }
@@ -26,6 +30,17 @@ template <auto A, auto B>
     static_assert(B != 0, "Division by zero!");
     static_assert(A % B == 0, "Division is not exact (remainder is not zero)!");
     return A / B;
+}
+
+template <typename M, typename T>
+[[nodiscard]] constexpr M getIndexMask(T max_index) noexcept {
+    M mask = 0;
+    uint32_t value = (uint32_t)(max_index);
+    while (value) {
+        mask += (value & 1);
+        value >>= 1;
+    }
+    return mask;
 }
 
 }  // namespace RetroCore

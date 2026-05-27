@@ -143,6 +143,7 @@ void retro_get_system_av_info(struct retro_system_av_info *info) {
 void retro_set_environment(retro_environment_t cb) {
    environ_cb = cb;
 
+   // Tell the frontend that this core can boot without content
    bool no_content = true;
    cb(RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, &no_content);
 

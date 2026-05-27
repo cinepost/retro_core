@@ -56,6 +56,7 @@ class Abstract_PPU: public PPU_BASE {
 		virtual bool init() { return true; }
 		virtual bool deinit() { return true; }
 		virtual bool render(uint8_t* pFrameData, uint32_t stride_bytes) = 0; // Render to host (e.g libretro) framebuffer
+		virtual void renderDebugScreen(uint8_t* pFrameData, uint32_t stride_bytes) {}
 
 
 	protected:

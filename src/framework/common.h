@@ -9,6 +9,14 @@
 
 namespace RetroCore {
 
+#if defined(__clang__)
+    #define UNROLL_64 _Pragma("clang loop unroll(full)")
+#elif defined(__GNUC__)
+    #define UNROLL_64 _Pragma("GCC unroll 64")
+#else
+    #define UNROLL_64 // Fallback for MSVC (relies on template or /O2)
+#endif
+
 [[nodiscard]] constexpr uint32_t bitsToBytesCount(uint32_t bits) noexcept {
     return (bits + 7) / 8;
 }

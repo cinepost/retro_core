@@ -93,7 +93,9 @@ bool Renderer<VDP, FBDIMS, PPUS...>::_render(uint8_t* pFrameData, uint32_t strid
 	if constexpr (sizeof...(PPUS) > 0) {
 		std::apply([pFrameData, stride_bytes](auto&... ppu) {
 			(ppu.render(pFrameData, stride_bytes), ...);
+			(ppu.renderDebugScreen(pFrameData, stride_bytes), ...);
 		}, mPPUs);
+
 	}
 	if(mShowDebugInfo) drawDebugCursor(pFrameData, stride_bytes);
 
@@ -105,17 +107,17 @@ bool Renderer<VDP, FBDIMS, PPUS...>::_render(uint8_t* pFrameData, uint32_t strid
 
 template<Platform VDP, FramebufferDims FBDIMS, typename ...PPUS>
 void Renderer<VDP, FBDIMS, PPUS...>::drawDebugBackground(uint8_t* pFrameData, uint32_t stride_bytes, uint32_t square_size, uint32_t color1, uint32_t color2) {
-	std::vector<uint32_t> rowA(FBDIMS.width);
-    std::vector<uint32_t> rowB(FBDIMS.width);
+	static std::array<uint32_t, FBDIMS.width> rowA;
+    static std::array<uint32_t, FBDIMS.width> rowB;
     
-    for (int x = 0; x < FBDIMS.width; ++x) {
+    for (uint16_t x = 0; x < FBDIMS.width; ++x) {
         bool col_even = (x / square_size) % 2 == 0;
         rowA[x] = col_even ? color1 : color2;
         rowB[x] = col_even ? color2 : color1;
     }
 
 	#pragma omp parallel for num_threads(2) schedule(static)
-    for (int y = 0; y < FBDIMS.height; ++y) {
+    for (uint16_t y = 0; y < FBDIMS.height; ++y) {
         uint8_t* dst = pFrameData + (y * stride_bytes);
         bool use_row_a = (y / square_size) % 2 == 0;
         memcpy(dst, use_row_a ? rowA.data() : rowB.data(), stride_bytes);

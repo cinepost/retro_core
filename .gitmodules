@@ -1,3 +1,9 @@
 [submodule "external/midifile"]
 	path = external/midifile
 	url = https://github.com/craigsapp/midifile
+[submodule "external/lodepng"]
+	path = external/lodepng
+	url = https://github.com/lvandeve/lodepng
+[submodule "external/minimp3"]
+	path = external/minimp3
+	url = https://github.com/lieff/minimp3.git

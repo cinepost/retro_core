@@ -30,7 +30,8 @@ namespace PPU {
 
 class NesPPU_BASE: public Abstract_PPU<Platform::NES> {
 	public:
-		static const uint16_t kMaximumSpriteIndex = 1023;
+		static const uint16_t kMaximumSpritesCount = 1024;
+		static constexpr uint16_t kMaximumSpriteIndex = kMaximumSpritesCount - 1;
 		static constexpr uint16_t kMaximumTileIndex = std::numeric_limits<uint16_t>::max();
 		static constexpr uint16_t sSpriteIndexMask = getIndexMask<uint16_t, uint16_t>(kMaximumSpriteIndex);
 		static constexpr uint16_t sTileIndexMask = getIndexMask<uint16_t, uint16_t>(kMaximumTileIndex);
@@ -54,7 +55,7 @@ class NesPPU_BASE: public Abstract_PPU<Platform::NES> {
 			Sprite(int16_t _x, int16_t _y, uint16_t _tile_index, uint8_t _attibs): x(_x), y(_y), tile_index(_tile_index & sTileIndexMask), attibs(_attibs) { }
 		};
 
-		using OAM = std::array<Sprite, kMaximumSpriteIndex + 1>;
+		using OAM = std::array<Sprite, kMaximumSpritesCount>;
 
 		void setSprite(uint16_t sprite_index, uint16_t tile_index, int16_t x, int16_t y, uint8_t attibs) {
 			const std::lock_guard<std::mutex> lock_frame(mFrameMutex);
@@ -64,6 +65,11 @@ class NesPPU_BASE: public Abstract_PPU<Platform::NES> {
 		void setSpritesState(bool state) {
 			const std::lock_guard<std::mutex> lock_scanline(mScanlineMutex);
 			mSpritesEnabled = state;
+		}
+
+		void setSpritesSizeState(bool state) {
+			const std::lock_guard<std::mutex> lock_scanline(mScanlineMutex);
+			mSpritesSizeFlag = state;
 		}
 
 		bool getSpritesState() const { return mSpritesEnabled; }
@@ -102,7 +108,7 @@ class NesPPU_BASE: public Abstract_PPU<Platform::NES> {
 		}
 
 		template<uint8_t patternTableId>
-		void pushTiles(const uint8_t* pData, size_t count, uint16_t tileIndex = 0 /* push starting at tileIndex */) {
+		void pushTiles(const uint8_t* pData, size_t tilesCount, uint16_t tileIndex = 0 /* push starting at tileIndex */) {
 			static constexpr size_t tileSizeBytes = sizeof(CHRTile);
 			uint8_t* pTarget; 
 			if constexpr (patternTableId == 0) {
@@ -111,7 +117,7 @@ class NesPPU_BASE: public Abstract_PPU<Platform::NES> {
 				pTarget = mPatternTable1[tileIndex].data();
 			}
 
-			std::memcpy(pTarget, pData, count);
+			std::memcpy(pTarget, pData, tilesCount * tileSizeBytes);
 		}
 
 		NesPPU_BASE(): Abstract_PPU<Platform::NES>() {
@@ -119,9 +125,13 @@ class NesPPU_BASE: public Abstract_PPU<Platform::NES> {
 		}
 
 	public:
-		static const uint8_t* getDefaultFontData(size_t& bytes_count) {
+		[[nodiscard]] static const uint8_t* getDefaultFontData(size_t& bytes_count) noexcept {
 			bytes_count = StaticData::NES::DefaultFontCHR.size();
 			return StaticData::NES::DefaultFontCHR.data();
+		}
+
+		[[nodiscard]] inline uint8_t getSpritePaletteId(uint8_t sprite_attrib) noexcept {
+    		return sprite_attrib & 0x03; 
 		}
 
 	protected:
@@ -132,12 +142,13 @@ class NesPPU_BASE: public Abstract_PPU<Platform::NES> {
 		uint16_t 	mScrollX = 0; // Equivalent to register $2005
 		uint16_t 	mScrollY = 0; // Equivalent to register $2005
 
-		uint8_t  	mSpritesPatternTableID = 0; 	// Equivalent to bit 3 of register $2000
-		uint8_t  	mBackgroundPatternTableID = 1; 	// Equivalent to bit 4 of register $2000
+		bool        mSpritesSizeFlag = false; 		// Equivalent to bit 5 of PPUCTRL register $2000. False - 8x8, True - 8x16.
+		uint8_t  	mSpritesPatternTableID = 0; 	// Equivalent to bit 3 of PPUCTRL register $2000
+		uint8_t  	mBackgroundPatternTableID = 1; 	// Equivalent to bit 4 of PPUCTRL register $2000
 		bool 		mSpritesEnabled = false; 		// Equivalent to bit 4 of register $2001
 		bool        mBackgroundEnabled = false;     // Equivalent to bit 3 of register $2001
 
-		std::array<Sprite*, kMaximumSpriteIndex + 1> mVisibleSprites;
+		std::array<uint16_t, kMaximumSpritesCount> mVisibleSpriteIndices;
     	size_t mVisibleSpritesCount = 0;
 
     	size_t mFrameNumber = 0;
@@ -192,6 +203,9 @@ class NesPPU: public NesPPU_BASE {
 		bool deinit();
 		bool render(uint8_t* pFrameData, uint32_t stride_bytes);
 		void renderDebugScreen(uint8_t* pFrameData, uint32_t stride_bytes) override;
+
+		static constexpr uint16_t getScreenWidth() { return FBDIMS.width; }
+		static constexpr uint16_t getScreenHeight() { return FBDIMS.height; }
 
 	public:
 		void setScroll(uint16_t x, uint16_t y) {

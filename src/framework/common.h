@@ -21,7 +21,7 @@ namespace RetroCore {
     return n > 0 && (n & (n - 1)) == 0;
 }
 
-[[nodiscard]] constexpr uint32_t bitsToBytesCount(uint32_t bits) noexcept {
+[[nodiscard]] constexpr uint8_t bitsToBytesCount(uint8_t bits) noexcept {
     return (bits + 7) / 8;
 }
 

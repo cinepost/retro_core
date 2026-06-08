@@ -66,7 +66,7 @@ static constexpr size_t sUint16Max = std::numeric_limits<uint16_t>::max();
 
 // Translates internal native bits (e.g., 3-bit RGB) to 32-bit RGBA for screen output
 template <Platform VDP>
-uint32_t nativeToRGBA8888(uint16_t nativeColor) {
+RGBA8888 nativeToRGBA8888(uint16_t nativeColor) {
 	if constexpr (VDP == Platform::MD) { 
 		// Sega Megadrive
 		uint8_t r = ((nativeColor & 0x007) >> 0) * 36;
@@ -85,7 +85,7 @@ uint32_t nativeToRGBA8888(uint16_t nativeColor) {
 }
 
 template <Platform VDP>
-uint32_t nativeToRGBA8888(uint8_t nativeColor) {
+RGBA8888 nativeToRGBA8888(uint8_t nativeColor) {
 	if constexpr (VDP == Platform::NES) { 
 		// NES
 		// nativeColor here is an index into NTSC/PAL to RGB palette
@@ -113,6 +113,7 @@ uint32_t nativeToRGBA8888(uint8_t nativeColor) {
 		// SMS (6-bit RGB)
 		// Hardware translates 2-bit values (0-3) to 8-bit color intensities
 		// Steps: 0 -> 0,  1 -> 85,  2 -> 170,  3 -> 255 (Value * 85)
+		RGBA8888 color(0xFFFFFFFF);
 		uint8_t r = ((nativeColor & 0x03) >> 0) * 85;
 		uint8_t g = ((nativeColor & 0x0C) >> 2) * 85;
 		uint8_t b = ((nativeColor & 0x30) >> 4) * 85;

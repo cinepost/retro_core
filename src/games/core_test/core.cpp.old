@@ -8,18 +8,17 @@
 #include "libretro.h"
 
 #include "framework/renderer.h"
-#include "framework/sound_engine.h"
-#include "framework/apu/apu.h"
-#include "framework/apu/apu_nes.h"
-#include "framework/apu/apu_psg.h"
-#include "framework/apu/apu_ym2612.h"
+
+//#include "framework/sound_engine.h"
+//#include "framework/apu/apu.h"
+//#include "framework/apu/apu_nes.h"
+//#include "framework/apu/apu_psg.h"
+//#include "framework/apu/apu_ym2612.h"
+
 #include "framework/ppu/ppu_nes.h"
 #include "framework/ppu/ppu_msx.h"
 
 #include <memory>
-
-//#define FRAMEBUFFER_WIDTH 448
-//#define FRAMEBUFFER_HEIGHT 256
 
 #define FRAMEBUFFER_WIDTH 512
 #define FRAMEBUFFER_HEIGHT 288
@@ -32,13 +31,14 @@ static constexpr RetroCore::FramebufferDims gResolution(FRAMEBUFFER_WIDTH, FRAME
 
 // Some PPUs for testing
 static RetroCore::PPU::NesPPU<gResolution> gPPU0;
-static RetroCore::PPU::MsxPPU<gResolution, RetroCore::PPU::MsxPPU_BASE::Mode::V_MODE1> gPPU1;
+static RetroCore::PPU::MsxPPU<gResolution> gPPU1;
 
 // Main renderer
 //static RetroCore::Renderer<gResolution, RetroCore::PPU::NesPPU_BASE> gRenderer(gPPU0);
-static RetroCore::Renderer<gResolution, RetroCore::PPU::NesPPU_BASE, RetroCore::PPU::MsxPPU_BASE> gRenderer(gPPU0, gPPU1);
+static RetroCore::Renderer<gResolution, RetroCore::PPU::MsxPPU_BASE> gRenderer(gPPU1);
+//static RetroCore::Renderer<gResolution, RetroCore::PPU::NesPPU_BASE, RetroCore::PPU::MsxPPU_BASE> gRenderer(gPPU0, gPPU1);
 
-static RetroCore::Sound::SoundEngine gSoundEngine;
+//static RetroCore::Sound::SoundEngine gSoundEngine;
 
 //static RetroCore::APU::HybridApu<RetroCore::APU::NesApu, RetroCore::APU::Ym2612Apu, RetroCore::APU::PsgApu> gAPU{
 //   RetroCore::APU::NesApu{},
@@ -49,12 +49,30 @@ static RetroCore::Sound::SoundEngine gSoundEngine;
 static struct retro_log_callback logging;
 static retro_log_printf_t log_cb;
 
+static RetroCore::Palette<16> img_palette;
+
 static void fallback_log(enum retro_log_level level, const char *fmt, ...) {
    (void)level;
    va_list va;
    va_start(va, fmt);
    vfprintf(stderr, fmt, va);
    va_end(va);
+}
+
+static uint16_t x_scroll = 0;
+static uint16_t y_scroll = 0;
+
+void scln_cb(uint16_t line) {
+   //printf("scnln %u \n", line);
+   if(line >= 272) {
+      gPPU1.setCurrentVramPageIndex(1);
+      gPPU1.setScrollY(16);
+      gPPU1.setScrollX(0);
+   } else {
+      gPPU1.setCurrentVramPageIndex(0);
+      gPPU1.setScrollY(y_scroll);
+      gPPU1.setScrollX(x_scroll);
+   }
 }
 
 void retro_init(void) {
@@ -69,6 +87,23 @@ void retro_init(void) {
    assert(pFontData);
    assert(font_bytes_count > 0);
    gPPU0.pushTiles<0>(pFontData, font_bytes_count, 0 /* push starting at tileIndex */);
+
+   gPPU1.setScreenMode(RetroCore::PPU::MsxPPU_BASE::ScreenMode::VSCREEN_5);
+   //gPPU1.setBorderBackgroundColor(8);
+
+   RetroCore::Palette<16> img_palette;
+   static const std::string test_filename = "/home/max/mnt/misc_hdd/dev/retro_core/games/virt_msx/KnightmareW/knightmare_title_02-dithered.png";
+   static const std::string test_status_line_filename = "/home/max/mnt/misc_hdd/dev/retro_core/games/virt_msx/KnightmareW/test_status_line.png";
+   
+   if(gPPU1.loadIndexedImagePNG(test_filename, gPPU1.getVramPageAddress(1), 512, 288, img_palette)) {
+      gPPU1.setPalette(img_palette);
+   }
+
+   if(!gPPU1.loadIndexedImagePNG(test_status_line_filename, gPPU1.getVramPageAddress(2), 512, 16, img_palette)) {
+      assert(false && "Error loading test_status_line.png");
+   }
+
+   gPPU1.setScanlineCallback(scln_cb);
 
    if(!result) {
       log_cb(RETRO_LOG_ERROR, "RetroCore::Renderer initialization failed !\n");
@@ -180,9 +215,6 @@ void retro_set_video_refresh(retro_video_refresh_t cb) {
    video_cb = cb;
 }
 
-static unsigned x_coord;
-static unsigned y_coord;
-
 void retro_reset(void) {
    gRenderer.reset();
 }
@@ -220,6 +252,17 @@ static void update_input(void) {
 
 static void render(void) {
    /* Try rendering straight into VRAM if we can. */
+
+   if(y_scroll < (FRAMEBUFFER_HEIGHT-1)) {
+      gPPU1.setScrollY(y_scroll++);
+   } else {
+      if(x_scroll < (FRAMEBUFFER_WIDTH - 1)) {
+         gPPU1.setScrollX(x_scroll++);
+      } else {
+         x_scroll = 0;
+         gPPU1.setScrollX(0);
+      }
+   }
 
    const uint8_t *buf = nullptr;
    uint32_t stride_bytes = gRenderer.getFramebufferStride();
@@ -357,24 +400,10 @@ size_t retro_serialize_size(void) {
 }
 
 bool retro_serialize(void *data_, size_t size) {
-   if (size < 2) {
-      return false;
-   }
-
-   uint8_t *data = static_cast<uint8_t*>(data_);
-   data[0] = x_coord;
-   data[1] = y_coord;
    return true;
 }
 
 bool retro_unserialize(const void *data_, size_t size) {
-   if (size < 2) {
-      return false;
-   }
-
-   const uint8_t *data = static_cast<const uint8_t*>(data_);
-   x_coord = data[0] & 31;
-   y_coord = data[1] & 31;
    return true;
 }
 

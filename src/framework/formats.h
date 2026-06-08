@@ -88,6 +88,8 @@ enum class PixelFormat: uint8_t {
 		case Platform::SMS:
 			return PixelFormat::RGB222;
 		case Platform::NES:
+			return PixelFormat::Indexed2BPP;
+		case Platform::MSX:
 			return PixelFormat::Indexed4BPP;
 		default:
 			static_assert("Should not be here!");

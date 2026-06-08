@@ -59,8 +59,10 @@ bool NesPPU<FBDIMS>::render(uint8_t* pFrameData, uint32_t stride_bytes) {
 	if(mSpritesEnabled) {
 
 		UNROLL_64
-		for(const Sprite& sprite: mSprites) {
+		for(uint16_t i = 0; i < kMaximumSpritesCount; ++i) {
+			const Sprite& sprite = mSprites[i];
 			if((sprite.x >= FBDIMS.width) || ((sprite.x + 8) < 0) || (sprite.y >= FBDIMS.height) || ((sprite.y + 8) < 0)) continue;
+			mVisibleSpriteIndices[mVisibleSpritesCount] = i;
 			mVisibleSpritesCount++;
 		}
 	}

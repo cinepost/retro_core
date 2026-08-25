@@ -59,6 +59,82 @@ union RGBA8888 {
 
 };
 
+union RGB111 {
+    // Access the entire packed color as a single 8-bit integer
+    uint8_t v;
+
+    // Access individual 1-bit color channels
+    struct {
+        uint8_t unused : 5; // 5 bits (0-4) 
+        uint8_t b      : 1; // 1 bit (5)
+        uint8_t g      : 1; // 1 bit (6)
+        uint8_t r      : 1; // 1 bit (7)
+    };
+
+    inline operator uint8_t() const { 
+        return v; 
+    }
+
+    // Right-hand side bitwise AND: Color & Mask
+    inline uint8_t operator&(uint8_t mask) const {
+        return v & mask;
+    }
+
+    // Left-hand side bitwise AND: Mask & Color
+    inline friend uint8_t operator&(uint8_t mask, const RGB111& color) {
+        return mask & color.v;
+    }
+
+    // Right Shift Operator: Color >> Bits
+    inline uint8_t operator>>(int shift) const {
+        return v >> shift;
+    }
+
+    RGB111() = default;
+
+    constexpr RGB111(uint8_t _v):v(_v) {}
+    constexpr RGB111(uint8_t _r, uint8_t _g, uint8_t _b): r(_r), g(_g), b(_b) {}
+
+};
+
+union RGB222 {
+    // Access the entire packed color as a single 8-bit integer
+    uint8_t v;
+
+    // Access individual 2-bit color channels
+    struct {
+        uint8_t unused : 2; // Lowest 3 bits (0-1)
+        uint8_t b      : 2; // Middle 3 bits (2-3)
+        uint8_t g      : 2; // High 3 bits (4-5)
+        uint8_t r      : 2; // Remainder bits at the top (6-7)
+    };
+
+    inline operator uint8_t() const { 
+        return v; 
+    }
+
+    // Right-hand side bitwise AND: Color & Mask
+    inline uint8_t operator&(uint8_t mask) const {
+        return v & mask;
+    }
+
+    // Left-hand side bitwise AND: Mask & Color
+    inline friend uint8_t operator&(uint8_t mask, const RGB222& color) {
+        return mask & color.v;
+    }
+
+    // Right Shift Operator: Color >> Bits
+    inline uint8_t operator>>(int shift) const {
+        return v >> shift;
+    }
+
+    RGB222() = default;
+
+    constexpr RGB222(uint8_t _v):v(_v) {}
+    constexpr RGB222(uint8_t _r, uint8_t _g, uint8_t _b): r(_r), g(_g), b(_b) {}
+
+};
+
 union RGB333 {
     // Access the entire packed 9-bit color as a single 16-bit integer
     uint16_t v;
@@ -104,21 +180,51 @@ union RGB333 {
 
 };
 
+union GRB332 {
+    // Access the entire packed color as a single 8-bit integer
+    uint8_t v;
+
+    // Access individual 3-bit color channels
+    struct {
+        uint8_t g      : 3; // Lowest 3 bits (0-2)
+        uint8_t r      : 3; // Middle 3 bits (3-5)
+        uint8_t b      : 1; // High 2 bits (6-7)
+    };
+
+    inline operator uint8_t() const { 
+        return v; 
+    }
+
+    // Right-hand side bitwise AND: Color & Mask
+    inline uint8_t operator&(uint8_t mask) const {
+        return v & mask;
+    }
+
+    // Left-hand side bitwise AND: Mask & Color
+    inline friend uint8_t operator&(uint8_t mask, const GRB332& color) {
+        return mask & color.v;
+    }
+
+    // Right Shift Operator: Color >> Bits
+    inline uint8_t operator>>(int shift) const {
+        return v >> shift;
+    }
+
+    GRB332() = default;
+
+    constexpr GRB332(uint8_t _v):v(_v) {}
+    constexpr GRB332(uint8_t _r, uint8_t _g, uint8_t _b): r(_r), g(_g), b(_b) {}
+};
+
 union RGB233 {
     // Access the entire packed color as a single 8-bit integer
     uint8_t v;
 
     // Access individual 3-bit color channels
     struct {
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-        uint8_t b      : 3; // 2 bits for Red
-        uint8_t g      : 3; // 3 bits for Green
-        uint8_t r      : 2; // 3 bits for EBlue
-#else // Defaulting to Little-Endian (x86_64, modern ARM, etc.)
         uint8_t r      : 2; // Lowest 2 bits (0-1)
         uint8_t g      : 3; // Middle 3 bits (2-4)
         uint8_t b      : 3; // High 3 bits (5-7)
-#endif
     };
 
     inline operator uint8_t() const { 
@@ -144,7 +250,6 @@ union RGB233 {
 
     constexpr RGB233(uint8_t _v):v(_v) {}
     constexpr RGB233(uint8_t _r, uint8_t _g, uint8_t _b): r(_r), g(_g), b(_b) {}
-
 };
 
 inline std::string to_hex_string(const RetroCore::RGBA8888& c) {

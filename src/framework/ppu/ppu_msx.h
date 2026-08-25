@@ -101,10 +101,14 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 
 		static const uint16_t kMaximumSpritesCount = 1024;
 		static const uint16_t kMaximumSpriteIndex = kMaximumSpritesCount - 1;
+
+		static constexpr uint16_t kMaximumPatternsCount = 4096;
+		static const uint16_t kMaximumPatternIndex = kMaximumPatternsCount - 1; // approx two screens of tiles at 512x288 resolution
+
 		static const uint32_t kVRAMSizeBytes = 1024 * 1024 * 16; // 16 Mb VRAM 
 
 		// If sprite Y is equal to kVerticalTerminatorCode must instantly stop processing any subsequent sprites in the table.
-		static constexpr uint16_t kVerticalTerminatorCode = std::numeric_limits<uint16_t>::max();
+		static constexpr int16_t kVerticalTerminatorCode = std::numeric_limits<int16_t>::min();
 
 		using ScanlineCallback = std::function<void(const uint16_t)>;
 		using CollisionDetectionCallback = std::function<void(uint16_t&, uint16_t&)>;
@@ -171,36 +175,32 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 		 */
 		using LOGOP = uint8_t;
 
-		union AsyncCmdArgs {
-			struct {
-				uint16_t x;
-				uint16_t y;
-			} hmmm_args;
-
-			struct {
-				uint8_t a;
-				uint32_t b;
-			} hmmc_args;
-
-			struct {
-				float z;
-			} xyz_args;
-		};
-
 		struct alignas(8) Sprite {
 			static constexpr uint16_t 	kInvalidPatternIndex = std::numeric_limits<uint16_t>::max();
 			static constexpr int16_t 	kOffScreenPos = std::numeric_limits<int16_t>::min();
 			int16_t x = kOffScreenPos;	// int16_t allows sprites to be partially hidden top/left
 			int16_t y = kOffScreenPos;
-			uint16_t pattern = kInvalidPatternIndex;
+			uint16_t index = kInvalidPatternIndex; // Pattern index. (If using 16x16 sprites, must be a multiple of 4)
 			
-			// Attributes have shared bits but different primary functions per mode:
-    		// Screen 2: [ EC | 0 | 0 | 0 | Sprite Color (4-bits) ]
-    		// Screen 5: [ CC | IC | 0 | 0 | CC Layer Code / Priority (4-bits) ]
-    		uint8_t attributes = 0; 
+			struct Attributes {
+				uint8_t color 	: 4; // Bits 0-3: 4 bits line color index
+				uint8_t reserved: 3; // Bits 4-6: Reserved
+				uint8_t ec 		: 1; // EC (Early Clock) flag. Shifts sprite 32 pixels left. // UNUSED !!!
+			} attribs;
+			uint8_t _pad;
 		};
+
+		struct Sprite_Color_Line {
+			uint8_t color 	: 4; // Bits 0-3: 4 bits line color index
+			uint8_t cc    	: 1; // Bit 4: CC (Color Code) bit for mixing or layered prioritization
+			uint8_t ic    	: 1; // Bit 5: IC (Invisible Code) makes the line transparent if set
+			uint8_t reserved: 1; // Bit 6: Reserved
+			uint8_t priority: 1; // Bit 7: Priority flag (Over or behind backgound tiles)
+		};
+
 	public:
 		MsxPPU_BASE(): Abstract_PPU<Platform::MSX>() {
+			setPalette(Palettes::kMsxDefaultPalette);
 			init();
 		}
 
@@ -215,6 +215,11 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 			mSpriteMode = mode;
 		}
 
+		void setSpriteSize(SpriteSize size) {
+			const std::lock_guard<std::mutex> lock_scanline(mScanlineMutex);
+			mSpriteSize = size;
+		}
+
 		void setBorderBackgroundColor(uint8_t color_index) {
 			const std::lock_guard<std::mutex> lock_scanline(mScanlineMutex);
 			mBorderBackgroundColor = color_index;
@@ -222,6 +227,14 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 
 		inline uint8_t getBorderBackgroundColor() const {
 			return mBorderBackgroundColor;
+		}
+
+		void enableSprites() {
+			mSpritesDisableFlag = false;
+		}
+
+		void disableSprites() {
+			mSpritesDisableFlag = true;
 		}
 
 		/* Equivalent og Bit 6 (BL - Blanking) of Register R1
@@ -241,16 +254,27 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 			mPalette[color_index & 0x0F] = rgb333_to_rgba8888(rgb333);
 		}
 
+		void setDefaultPalette();
+
 		void setPalette(const Palette<16>& palette) {
 			if(!canPaletteBeModified(mScreenMode)) return;
 			const std::lock_guard<std::mutex> lock_scanline(mScanlineMutex);
 			mPalette = palette;
+			
+			// quantize to real v9938 palette
+			for(uint8_t i = 0; i < 16; ++i) {
+				mPalette[i] = v9938_to_rgb888(rgb888_to_v9938(mPalette[i]));
+			}
+		}
+
+		const Palette<16>& getPalette() const {
+			return mPalette;
 		}
 
 		void writeTileIndex(uint16_t name_table_offset, uint16_t tile_index);
 
 		[[nodiscard]] inline uint8_t getCurrentSpritesExtent() const {
-			return (mSpritesSize == SpriteSize::SPRITE_8 ? 8 : 16) * (mSpritesMag ? 2 : 1);
+			return (mSpriteSize == SpriteSize::SPRITE_8 ? 8 : 16) * (mSpritesMag ? 2 : 1);
 		}
 
 		inline void setPatternTableAddress(uint32_t address) {
@@ -293,6 +317,14 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 			return mSpriteAttributeTableAddress;
 		}
 
+		inline void setSpriteColorTableAddress(uint32_t address) {
+			mSpriteColorTableAddress = address % kVRAMSizeBytes;
+		}
+
+		[[nodiscard]] inline uint32_t getSpriteColorTableAddress() const {
+			return mSpriteColorTableAddress;
+		}
+
 		// Per-scanline callback
     	void setScanlineCallback(ScanlineCallback cb) {
     		const std::lock_guard<std::mutex> lock_frame(mFrameMutex);
@@ -305,12 +337,11 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
         	mCollisionDetectionCallback = cb;
     	}
 
-		// Experimental take on (TMS)(V)99x8 async pipeline
-		void cmdAsync(AsyncCmd cmd, AsyncCmdArgs args) {
-			const std::lock_guard<std::mutex> lock_frame(mFrameMutex);
-		}
-
 		// VRAM access
+
+		void clearVRAM() {
+			std::fill(mVRAM.begin(), mVRAM.end(), 0);
+		}
 
 		inline void vramWrite(uint32_t vram_address, uint8_t value) {
 			mVRAM[vram_address % kVRAMSizeBytes] = value;
@@ -321,6 +352,28 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 
 		inline void vramBlockWrite(uint32_t vram_address, const uint8_t* source_buffer, uint16_t num_bytes) {
 			std::memcpy(&mVRAM[vram_address % kVRAMSizeBytes], source_buffer, num_bytes);
+		}
+
+		static constexpr uint32_t getPatternsTableSize() {
+			return kMaximumPatternsCount * 8;
+		}
+
+		virtual uint32_t getNameTableSize() const = 0;
+
+		static constexpr uint32_t geColorTableSize() {
+			return kMaximumPatternsCount * 8;
+		}
+
+		static constexpr uint32_t getSpritePatternsTableSize() {
+			return kMaximumSpritesCount * 8;
+		}
+
+		static constexpr uint32_t getSpriteAttributeTableSize() {
+			return sizeof(Sprite) * kMaximumSpritesCount;
+		}
+
+		static constexpr uint32_t getSpriteColorTableSize() {
+			return sizeof(Sprite_Color_Line) * kMaximumSpritesCount * 8;
 		}
 
 	public:
@@ -343,7 +396,7 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 		ScreenMode 		mScreenMode         = ScreenMode::VSCREEN_5;
 		TextMode        mTextMode 			= TextMode::NORMAL;
 		SpriteMode      mSpriteMode 		= SpriteMode::MODE1;
-		SpriteSize      mSpritesSize		= SpriteSize::SPRITE_8;	// Equivalent to Bit 1 of Control Register 1 (R1). False - 8x8, True - 16x16.
+		SpriteSize      mSpriteSize			= SpriteSize::SPRITE_8;	// Equivalent to Bit 1 of Control Register 1 (R1). False - 8x8, True - 16x16.
 		bool            mSpritesMag 		= false;				// Equivalent to Bit 0 of Control Register 1 (R1). False - 1x scale, True - 2x scale.
 		bool            mSpritesDisableFlag	= false;				// Equivalent to Bit 6 of Register 8 (R8). True - entire sprite rendering pipeline is bypassed.
 
@@ -359,8 +412,9 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 		uint32_t        mNameTableAddress = 0;
 		uint32_t		mSpritePatternTableAddress = 0;
 		uint32_t        mSpriteAttributeTableAddress = 0;
+		uint32_t        mSpriteColorTableAddress = 0;
 
-		Palette<16> 	mPalette = Palettes::kMsxDefaultPalette;
+		Palette<16> 	mPalette;
 
 		// VRAM
 		std::array<uint8_t, kVRAMSizeBytes> mVRAM; // 16 Mb VRAM
@@ -377,14 +431,11 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 };
 
 template <FramebufferDims FBDIMS>
-class MsxPPU: public MsxPPU_BASE {
+class MsxPPU final: public MsxPPU_BASE {
 	public:
 		static constexpr uint16_t getPatternsCountPerScreen() {
 			return (FBDIMS.width / 8) * (FBDIMS.height / 8);
 		}
-
-		static constexpr uint16_t kMaximumPatternsCount = getPatternsCountPerScreen() * 2;
-		static const uint16_t kMaximumPatternIndex = kMaximumPatternsCount - 1; // two screen pages of tiles
 
 		MsxPPU(): MsxPPU_BASE() {
 			static_assert(divideExact<FBDIMS.width, 16>());
@@ -451,41 +502,172 @@ class MsxPPU: public MsxPPU_BASE {
 		constexpr uint8_t* getVramPagePtr(uint16_t page_index) {
 			return &mVRAM[getVramPageAddress(page_index)]; // we just use one byte per pixel no matter what SCREEN is set.
 		}
+	
+		// "Blitter" functions
 
+		void cmdHMMM(uint16_t source_x, uint16_t source_y, uint16_t dest_x, uint16_t dest_y, uint16_t block_width, uint16_t block_height, bool TMDbit = false /* index 0 color key */);
+
+		// VRAM access
+
+		uint32_t getNameTableSize() const override {
+			switch(mScreenMode) {
+				case MsxPPU_BASE::ScreenMode::VSCREEN_0:
+				case MsxPPU_BASE::ScreenMode::VSCREEN_1:
+				case MsxPPU_BASE::ScreenMode::VSCREEN_2:
+				case MsxPPU_BASE::ScreenMode::VSCREEN_3:
+				case MsxPPU_BASE::ScreenMode::VSCREEN_4:
+					return getPatternsCountPerScreen() * 2; // 16 bit indices
+				default:
+					return 0;
+			}
+		}
+
+	// Higher level utility functions	
+	public:
+		bool loadIndexedImagePNG(const std::string& filename, uint32_t vram_address, uint16_t img_width, uint16_t img_height, Palette<16>* pPalette = nullptr);
+
+		void createDefaultMemoryLayout() {
+			// reserve memory for 4 screens
+			static constexpr uint32_t off_screen_pages_offset = getVramPageSize() * 4;
+
+			uint32_t current_mem_offset = off_screen_pages_offset;
+			std::cout << "PatternTable address " << current_mem_offset << std::endl;
+			setPatternTableAddress(current_mem_offset);
+
+			current_mem_offset += getPatternsTableSize();
+			std::cout << "NameTable address " << current_mem_offset << std::endl;
+			setNameTableAddress(current_mem_offset);
+
+			current_mem_offset += getNameTableSize();
+			std::cout << "ColorTable address " << current_mem_offset << std::endl;
+			setColorTableAddress(current_mem_offset);
+
+			current_mem_offset += geColorTableSize();
+			std::cout << "SpritePatternTable address " << current_mem_offset << std::endl;
+			setSpritePatternTableAddress(current_mem_offset);
+
+			current_mem_offset += getSpritePatternsTableSize();
+			std::cout << "SpriteAttributeTable address " << current_mem_offset << std::endl;
+			setSpriteAttributeTableAddress(current_mem_offset);
+
+			current_mem_offset += getSpriteAttributeTableSize();
+			std::cout << "SpriteColorTable address " << current_mem_offset << std::endl;
+			setSpriteColorTableAddress(current_mem_offset);
+		}
+
+		void clearNameTable() {
+			const auto name_table_size = getNameTableSize();
+			if(name_table_size == 0) return;
+			std::memset(&mVRAM[getNameTableAddress()], 0, name_table_size);
+		}
+
+		void pushTile(uint16_t tile_index, const std::array<uint8_t, 16>& fullData);
 		void pushTile(uint16_t tile_index, const PATTERN_8D_8C& tileData);
+
+		void pushTiles(const std::array<uint8_t, 16>* pTiles, size_t count, uint16_t tile_index_offset) {
+			assert(count <= (tile_index_offset + kMaximumPatternsCount));
+			for(size_t i = 0; i < count; ++i) {
+				pushTile(i + tile_index_offset, pTiles[i]);
+			}
+		}
 
 		/**
  		* Pushes 8x8px 1bpp sprite pattern into VRAM.
  		*/
-		inline void pushSpritePatten(uint32_t spt_base_address, const uint8_t* pSrc /* 8 bytes of data */) {
-
-		}
+		void pushSpritePattern(uint16_t tile_index, const uint8_t* pSrc, uint8_t bytes_count /* 8 or 32 bytes of data */);
+		void pushSpritePattern(uint16_t tile_index, const std::array<uint8_t, 8>& src);
+		void pushSpritePattern(uint16_t tile_index, const std::array<uint8_t, 32>& src);
 
 		/**
  		* Pushes a complete 4-byte Attribute structure for a single sprite ID into VRAM.
  		*/
-		inline void pushSpriteAttribute(uint32_t sat_base_address, uint8_t sprite_id, uint8_t y, uint8_t x, uint8_t pattern, uint8_t status) {
+		inline Sprite& getSpriteAttribute(uint16_t sprite_id) {
+			return *reinterpret_cast<Sprite*>(&mVRAM[getSpriteAttributeTableAddress() + sprite_id * sizeof(Sprite)]);
+		}
 
+		inline const uint8_t* getSpritePatternAddress(uint16_t sprite_id) {
+			return &mVRAM[getSpritePatternTableAddress() + getSpriteAttribute(sprite_id).index * 8];
 		}
 
 		/**
- 		* Pushes custom line-by-line color data for a 16-pixel high multicolor sprite.
- 		*/
-		inline void pushSpriteColors(uint32_t sct_base_address, uint8_t sprite_id, const uint8_t* pColorData /* 16 bytes of color data */) {
-
+		* Sets all sprite attributes Y to kVerticalTerminatorCode. This tells VPD to stop sprites processing. 
+		*/
+		inline void clearAllSpriteAttributes() {
+			for(uint16_t sprite_id = 0; sprite_id < kMaximumSpritesCount; ++sprite_id) {
+				Sprite& sprite = getSpriteAttribute(sprite_id);
+				sprite.y = kVerticalTerminatorCode;
+			}
 		}
 
-
-	public:
-		// Higher level utility functions
-		bool loadIndexedImagePNG(const std::string& filename, uint32_t vram_address, uint16_t width, uint16_t height, Palette<16>& img_palette);
-
 	private:
-
-		void sortSprites();
+		void outputBlankScreen(uint8_t*pFrameData, uint32_t stride_bytes);
 
 		bool render_SCREEN_2(uint8_t* pFrameData, uint32_t stride_bytes);
 		bool render_SCREEN_5(uint8_t* pFrameData, uint32_t stride_bytes);
+
+		FORCE_INLINE void sortSprites() {
+			mVisibleSpritesCount = 0;
+
+			const uint8_t sprite_extent = getCurrentSpritesExtent();
+			const Sprite* pSprites = reinterpret_cast<const Sprite*>(&mVRAM[getSpriteAttributeTableAddress()]);
+
+			UNROLL_64
+			for(uint16_t sprite_id = 0; sprite_id < kMaximumSpritesCount; ++sprite_id) {
+				const Sprite& sprite = getSpriteAttribute(sprite_id); //pSprites[sprite_id];
+				if(sprite.y == kVerticalTerminatorCode) return;
+
+				if( (sprite.x >= FBDIMS.width) || ((sprite.x + sprite_extent) < 0)) continue;
+
+				mVisibleSpriteIndices[mVisibleSpritesCount] = sprite_id;
+				mVisibleSpritesCount++;
+			}
+
+			if(mVisibleSpritesCount > 0 && mVisibleSpritesCount <= mVisibleSpriteIndices.size()) {
+        		std::reverse(mVisibleSpriteIndices.begin(), mVisibleSpriteIndices.begin() + mVisibleSpritesCount);
+    		}
+		}
+
+		template<ScreenMode SCREEN_MODE>
+		inline void render_SPRITES_LINE(uint16_t line, uint8_t* pFrameData, uint32_t stride_bytes) {
+			if(mSpritesDisableFlag || mVisibleSpritesCount == 0) return;
+			
+			// Render sprites
+			//std::cout << "Visible sprites count " << mVisibleSpritesCount << std::endl;
+
+			uint32_t* pDstLine = reinterpret_cast<uint32_t*>(pFrameData + line * stride_bytes);
+			const int16_t sprite_extent = static_cast<int16_t>(getCurrentSpritesExtent());
+
+			for(uint16_t i = 0; i < mVisibleSpritesCount; ++i) {
+				const Sprite& sprite = getSpriteAttribute(mVisibleSpriteIndices[i]);
+				if((int)line < sprite.y || ((int)line >= sprite.y + sprite_extent)) continue;
+
+				uint16_t pattern_line = line - sprite.y;
+				const uint8_t* pPatternData = getSpritePatternAddress(mVisibleSpriteIndices[i]) + pattern_line;
+
+				uint8_t color_index = sprite.attribs.color;
+
+				if constexpr (SCREEN_MODE != ScreenMode::VSCREEN_1 && SCREEN_MODE != ScreenMode::VSCREEN_2 && SCREEN_MODE != ScreenMode::VSCREEN_3) {
+					color_index = (uint8_t)7;
+				} 
+
+				color_index = (uint8_t)7;
+
+				uint16_t pattern_word = *pPatternData << 8;
+				if(mSpriteSize == SpriteSize::SPRITE_16) {		
+					pattern_word |= *(pPatternData + 16);
+				}
+
+				uint16_t screen_start_x = std::min(sprite.x < 0 ? 0 : sprite.x, FBDIMS.width - 1);
+				uint16_t sprite_start_x = sprite.x < 0 ? (-sprite.x) : 0;
+				uint16_t sprite_visible_pixels_count = (((sprite.x + sprite_extent) >= FBDIMS.width) ? (FBDIMS.width - sprite.x) : sprite_extent) - sprite_start_x;
+
+				for(uint16_t x = screen_start_x; x < (screen_start_x + sprite_visible_pixels_count); ++x) {
+					if(pattern_word >> (15 - ((sprite_start_x++))) & 1) {
+						if(color_index != 0) *(pDstLine + x) = mPalette[color_index] >> 8;
+					}
+				}
+			}
+		}
 };
 
 }  // namespace PPU
@@ -520,6 +702,7 @@ inline std::string to_string(const RetroCore::PPU::MsxPPU_BASE::ScreenMode& mode
 			return "VSCREEN_12";
 		default:
 			assert(false && "Should not be here!");
+			return "Unknown screen";
 	}
 }
 

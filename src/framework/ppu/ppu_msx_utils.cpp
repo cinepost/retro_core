@@ -163,7 +163,7 @@ namespace MSX {
                 if(pRefPalette) {
                     currentTile.color[y] = (firstColorInRow & 0x0F) | ((secondaryColorInRow & 0x0F) << 4);
                 } else {
-                    currentTile.color[y] = 0x0F;
+                    currentTile.color[y] = 0xF0;
                 }
             }
 

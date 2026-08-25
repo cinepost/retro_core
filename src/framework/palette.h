@@ -110,6 +110,10 @@ class Palette: public PaletteBase {
 			return mColors[index & 0x3F];
 		}
 
+		void setColor(uint32_t index, const Color c) {
+			mColors[index] = c;
+		}
+
 		void setColor(uint32_t index, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
 			mColors[index].r = r; mColors[index].g = g; mColors[index].b = b; mColors[index].a = a;
 		}

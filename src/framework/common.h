@@ -7,7 +7,14 @@
 #include <cassert>
 
 
-namespace RetroCore {
+#if defined(_MSC_VER)
+    #define FORCE_INLINE __forceinline  // MSVC (Windows)
+#elif defined(__GNUC__) || defined(__clang__)
+    #define FORCE_INLINE inline __attribute__((always_inline)) // GCC/Clang (Linux/Mac)
+#else
+    #define FORCE_INLINE inline
+#endif
+
 
 #if defined(__clang__)
     #define UNROLL_64 _Pragma("clang loop unroll(full)")
@@ -16,6 +23,9 @@ namespace RetroCore {
 #else
     #define UNROLL_64 // Fallback for MSVC (relies on template or /O2)
 #endif
+
+
+namespace RetroCore {
 
 [[nodiscard]] constexpr bool isPowerOfTwo(size_t n) noexcept {
     return n > 0 && (n & (n - 1)) == 0;

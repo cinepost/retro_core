@@ -8,7 +8,6 @@
 
 #include "libretro.h"
 
-#include "framework/renderer.h"
 #include "framework/ppu/ppu_nes.h"
 #include "framework/ppu/ppu_msx.h"
 
@@ -31,7 +30,7 @@ static retro_environment_t          environ_cb;
 static retro_input_poll_t           input_poll_cb;
 static retro_input_state_t          input_state_cb;
 
-static TestMsxGame gGame;
+static TestMsxGame gGame(TARGET_FPS);
 
 static void fallback_log(enum retro_log_level level, const char *fmt, ...) {
    (void)level;

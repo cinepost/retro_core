@@ -169,7 +169,7 @@ class NesPPU_BASE: public Abstract_PPU<Platform::NES> {
 };
 
 template <FramebufferDims FBDIMS>
-class NesPPU: public NesPPU_BASE {
+class NesPPU final: public NesPPU_BASE {
 	public:
 		static constexpr uint16_t s_x_scroll_mask = isPowerOfTwo(FBDIMS.width) ? FBDIMS.width - 1 : std::numeric_limits<uint16_t>::max();
 		static constexpr uint16_t s_y_scroll_mask = isPowerOfTwo(FBDIMS.height) ? FBDIMS.height - 1 : std::numeric_limits<uint16_t>::max();

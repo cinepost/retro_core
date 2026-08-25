@@ -10,7 +10,7 @@ namespace PPU {
 namespace Utils {
 
 template <size_t COLOR_COUNT>
-[[nodiscard]] bool loadIndexedPng(const std::string& filename, uint16_t img_width, uint16_t img_height, uint8_t* pDst, Palette<COLOR_COUNT>& outPalette);
+[[nodiscard]] bool loadIndexedPng(const std::string& filename, uint16_t img_width, uint16_t img_height, std::vector<uint8_t>& img_out_data, Palette<COLOR_COUNT>* pOutPalette = nullptr);
 
 }  // namespace Utils
 }  // namespace PPU

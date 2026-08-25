@@ -13,7 +13,7 @@ namespace PPU {
 namespace Utils {
 
 template <size_t COLOR_COUNT>
-[[nodiscard]] bool loadIndexedPng(const std::string& filename, uint16_t img_width, uint16_t img_height, uint8_t* pDst, Palette<COLOR_COUNT>& outPalette) {
+[[nodiscard]] bool loadIndexedPng(const std::string& filename, uint16_t img_width, uint16_t img_height, std::vector<uint8_t>& img_out_data, Palette<COLOR_COUNT>* pOutPalette) {
     lodepng::State state;
 
     // CRITICAL: Prevent LodePNG from auto-converting the output to RGBA.
@@ -48,22 +48,25 @@ template <size_t COLOR_COUNT>
     }
 
     // Safely copy the pixel index bytes into the std::array
-    std::copy(decodedPixels.begin(), decodedPixels.end(), pDst);
+    img_out_data.resize(decodedPixels.size());
+    std::copy(decodedPixels.begin(), decodedPixels.end(), img_out_data.data());
 
-    // Extract palette values from the source PNG info block
-    // Accessing state.info_png (the metadata inside the file) rather than info_raw
-    size_t paletteSize = state.info_png.color.palettesize;
+    if(pOutPalette) {
+        // Extract palette values from the source PNG info block
+        // Accessing state.info_png (the metadata inside the file) rather than info_raw
+        size_t paletteSize = state.info_png.color.palettesize;
 
-    for (size_t i = 0; i < paletteSize && i < outPalette.size(); ++i) {
-        // quantize to 333 and back
-        const RGBA8888 color(state.info_png.color.palette[i * 4], state.info_png.color.palette[i * 4 + 1], state.info_png.color.palette[i * 4 + 2], state.info_png.color.palette[i * 4 + 3]);
-        outPalette[i] = v9938_to_rgb888(rgb888_to_v9938(color));
+        for (size_t i = 0; i < paletteSize && i < pOutPalette->size(); ++i) {
+            // quantize to 333 and back
+            const RGBA8888 color(state.info_png.color.palette[i * 4], state.info_png.color.palette[i * 4 + 1], state.info_png.color.palette[i * 4 + 2], state.info_png.color.palette[i * 4 + 3]);
+            pOutPalette->setColor(i, color);
+        }
     }
 
     return true;
 }
 
-template [[nodiscard]] bool loadIndexedPng<16>(const std::string& filename, uint16_t img_width, uint16_t img_height, uint8_t* pDst, Palette<16>& outPalette);
+template [[nodiscard]] bool loadIndexedPng<16>(const std::string& filename, uint16_t img_width, uint16_t img_height, std::vector<uint8_t>& img_out_data, Palette<16>* pOutPalette);
 
 }  // namespace Utils
 }  // namespace PPU

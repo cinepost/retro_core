@@ -1,16 +1,71 @@
 {
-    "activeFile": "",
-    "expandedProjectPaths": [
-    ],
-    "fileStates": {
+    "Map/SizeTest": {
+        "height": 4300,
+        "width": 2
     },
+    "activeFile": "level_01.tmx",
+    "expandedProjectPaths": [
+        "."
+    ],
+    "file.lastUsedOpenFilter": "All Files (*)",
+    "fileStates": {
+        "extras.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "level_01.json": {
+            "scale": 0.60498046875,
+            "selectedLayer": 6,
+            "viewCenter": {
+                "x": 257.8595641646489,
+                "y": 628.9459241323647
+            }
+        },
+        "level_01.tmx": {
+            "scale": 2,
+            "selectedLayer": 5,
+            "viewCenter": {
+                "x": 243.75,
+                "y": 597.25
+            }
+        },
+        "level_01_tileset.tsx": {
+            "scaleInDock": 2,
+            "scaleInEditor": 1
+        },
+        "powers_weapons.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        }
+    },
+    "last.exportedFilePath": "/home/max/mnt/misc_hdd/dev/retro_core/games/virt_msx/KnightmareW/tiled_data",
+    "last.imagePath": "/home/max/mnt/misc_hdd/dev/retro_core/games/virt_msx/KnightmareW/tiled_data",
     "map.height": 256,
+    "map.lastUsedExportFilter": "JSON map files (*.tmj *.json)",
+    "map.lastUsedFormat": "tmx",
     "map.tileHeight": 8,
     "map.tileWidth": 8,
     "map.width": 64,
     "openFiles": [
+        "level_01.tmx",
+        "level_01_tileset.tsx",
+        "powers_weapons.tsx",
+        "extras.tsx",
+        "level_01.json"
     ],
     "project": "level_0_01.tiled-project",
+    "property.type": "bool",
     "recentFiles": [
-    ]
+        "level_01.json",
+        "extras.tsx",
+        "powers_weapons.tsx",
+        "level_01_tileset.tsx",
+        "level_01.tmx"
+    ],
+    "tileset.lastUsedFormat": "tsx",
+    "tileset.tileSize": {
+        "height": 16,
+        "width": 16
+    },
+    "tileset.useTransparentColor": true
 }

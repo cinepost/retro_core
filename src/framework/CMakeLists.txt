@@ -58,11 +58,11 @@ target_include_directories(retro_core_lib PRIVATE
 
 # Target the current machine's hardware profile natively
 target_compile_options(retro_core_lib PRIVATE
-    -Wall
-    -Wextra
-    -Wpedantic
-    -Wshadow
-    -Wconversion
+#    -Wall
+#    -Wextra
+#   -Wpedantic
+#    -Wshadow
+#    -Wconversion
     
     # Debug-specific flags: Add maximum GDB symbols (-ggdb3) and disable optimizations
     $<$<CONFIG:Debug>:-ggdb3 -O0>

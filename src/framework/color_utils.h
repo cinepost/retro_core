@@ -6,13 +6,20 @@
 namespace RetroCore {
 
 /**
- * Quantizes an 8-bit color channel down to a V9938 3-bit space.
- * Uses accurate rounding (adds 18 before dividing by 36) rather than truncation.
+ * Quantizes an 8-bit color channel down to 2-bit space.
  */
-[[ nodiscard ]] inline constexpr uint8_t quantize_8_to_3(uint8_t value8) noexcept {
-    // Exact mapping: value3 = round(value8 * 7.0 / 255.0)
-    // Integer approximation equivalent: (value8 * 7 + 127) / 255
-    return (uint8_t)(((uint16_t)value8 * 7 + 127) / 255);
+[[ nodiscard ]] inline constexpr uint8_t quantize_8_to_2(uint8_t value8) noexcept {
+    // Add half of the divisor (64 / 2 = 32) to round to nearest bucket
+    // Shift right by 6
+    // Clamp the maximum output to 3 (2-bit max) to prevent overflow
+    return std::min<uint8_t>(3, (value8 + 32) >> 6);
+}
+
+/**
+ * Upscales a 2-bit color channel back to full 8-bit space.
+ */
+[[ nodiscard ]] inline constexpr uint8_t upscale_2_to_8(uint8_t value2) noexcept {
+    return value2 * 85; // Maps 0->0, 1->85, 2->170, 3->255
 }
 
 /**
@@ -26,9 +33,52 @@ namespace RetroCore {
 }
 
 /**
- * Packs RGBA8888 into a 9-bit V9938 hardware-compatible bit array.
+ * Quantizes an 8-bit color channel down to a V9938 3-bit space.
+ * Uses accurate rounding (adds 18 before dividing by 36) rather than truncation.
  */
-[[ nodiscard ]] inline constexpr RGB333 rgb888_to_v9938(RGBA8888 color) noexcept {
+[[ nodiscard ]] inline constexpr uint8_t quantize_8_to_3(uint8_t value8) noexcept {
+    // Exact mapping: value3 = round(value8 * 7.0 / 255.0)
+    // Integer approximation equivalent: (value8 * 7 + 127) / 255
+    return (uint8_t)(((uint16_t)value8 * 7 + 127) / 255);
+}
+
+[[ nodiscard ]] inline constexpr RGB111 rgb888_to_rgb111(RGBA8888 color) noexcept {
+    return RGB111(color.r >> 7, color.g >> 7, color.b >> 7);
+}
+
+[[ nodiscard ]] inline constexpr RGBA8888 rgb111_to_rgb888(RGB111 color111) noexcept {
+    uint8_t r1 = (uint8_t)(color111 >> 7) & 0x01;
+    uint8_t g1 = (uint8_t)(color111 >> 6) & 0x01;
+    uint8_t b1 = (uint8_t)(color111 >> 5) & 0x01;
+    
+    RGBA8888 color888;
+    color888.r = r1 * 255;
+    color888.g = g1 * 255;
+    color888.b = b1 * 255;
+
+    return color888;
+}
+
+[[ nodiscard ]] inline constexpr RGB222 rgb888_to_rgb222(RGBA8888 color) noexcept {
+    uint8_t r2 = quantize_8_to_2(color.r);
+    uint8_t g2 = quantize_8_to_2(color.g);
+    uint8_t b2 = quantize_8_to_2(color.b);
+    return RGB222(r2, g2, b2);
+}
+
+[[ nodiscard ]] inline constexpr RGBA8888 rgb222_to_rgb888(RGB222 color222) noexcept {
+    uint8_t r2 = (uint8_t)(color222 >> 6) & 0x03;
+    uint8_t g2 = (uint8_t)(color222 >> 4) & 0x03;
+    uint8_t b2 = (uint8_t)(color222 >> 2) & 0x03;
+    
+    RGBA8888 color888;
+    color888.r = upscale_2_to_8(r2);
+    color888.g = upscale_2_to_8(g2);
+    color888.b = upscale_2_to_8(b2);
+    return color888;
+}
+
+[[ nodiscard ]] inline constexpr RGB333 rgb888_to_rgb333(RGBA8888 color) noexcept {
     uint8_t r3 = quantize_8_to_3(color.r);
     uint8_t g3 = quantize_8_to_3(color.g);
     uint8_t b3 = quantize_8_to_3(color.b);
@@ -38,9 +88,13 @@ namespace RetroCore {
 }
 
 /**
- * Unpacks a 9-bit V9938 color back to RGBA8888.
+ * Packs RGBA8888 into a 9-bit V9938 hardware-compatible bit array.
  */
-[[ nodiscard ]] inline RGBA8888 v9938_to_rgb888(RGB333 color333) noexcept {
+[[ nodiscard ]] inline constexpr RGB333 rgb888_to_v9938(RGBA8888 color) noexcept {
+    return rgb888_to_rgb333(color);
+}
+
+[[ nodiscard ]] inline constexpr RGBA8888 rgb333_to_rgb888(RGB333 color333) noexcept {
     uint8_t r3 = (uint16_t)(color333 >> 6) & 0x07;
     uint8_t g3 = (uint16_t)(color333 >> 3) & 0x07;
     uint8_t b3 = (uint16_t)color333 & 0x07;
@@ -51,6 +105,13 @@ namespace RetroCore {
     color888.b = upscale_3_to_8(b3);
     
     return color888;
+}
+
+/**
+ * Unpacks a 9-bit V9938 color back to RGBA8888.
+ */
+[[ nodiscard ]] inline constexpr RGBA8888 v9938_to_rgb888(RGB333 color333) noexcept {
+    return rgb333_to_rgb888(color333);
 }
 
 

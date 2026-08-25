@@ -6,6 +6,8 @@
 #include "framework/game_engine/game_state.h"
 #include "framework/game_engine/game_audio.h"
 
+#include "game_world.h"
+
 #define FRAMEBUFFER_WIDTH 512
 #define FRAMEBUFFER_HEIGHT 288
 
@@ -26,6 +28,9 @@ class IntroState : public GameEngine::GameState {
         void render() override; // Draws splash art
         void renderAudio(int16_t* pSamplesData, size_t samples_per_frame) override;
 
+    protected:
+        void finish();
+
     private:
         V99x8& mPPU;
 
@@ -33,28 +38,78 @@ class IntroState : public GameEngine::GameState {
         uint16_t y_scroll = 0;
 
         double mScrollY_F;
+        bool   mLogoShown = false;
 
         std::unique_ptr<GameEngine::MP3Stream> mBgmMp3Stream;
 
         GameEngine::AssetManager mAssetManager; // TODO: Source from game engine
 };
 
-class Level1State : public GameEngine::GameState {
+class LevelBaseState : public GameEngine::GameState {
     public:
-        Level1State(V99x8& ppu, GameEngine::StateManager& sm): GameEngine::GameState(sm), mPPU(ppu) {}
+        LevelBaseState(V99x8& ppu, GameEngine::StateManager& sm): GameEngine::GameState(sm), mPPU(ppu) {}
 
     protected:
         void enter();
         void update(double dt) override;
+
+    public:
+        // Helper function to check extras layer placement
+        template <typename T, std::size_t N>
+        static constexpr bool check_extras_layer(const std::array<T, N>& arr) {
+            for (std::size_t i = 0; i < arr.size(); ++i) {
+                if (arr[i].x % 16 != 0) {
+                    return false;
+                }
+                if (arr[i].y % 16 != 0) {
+                    return false;
+                }
+                if (arr[i].width != 16 || arr[i].height != 16) {
+                    return false;
+                }
+            }
+            return true;
+        }
+                
+    protected:
+        struct Sprite {
+            uint16_t pattern = 0;
+            int16_t pos_x = 0;
+            int16_t pos_y = 0;
+
+            int16_t dir_x = 1;
+            int16_t dir_y = 1;
+        };
+
+        V99x8& mPPU;
+
+        std::unique_ptr<GameEngine::MP3Stream> mBgmMp3Stream;
+
+        GameEngine::AssetManager mAssetManager; // TODO: Source from game engine
+        std::vector<Sprite> mSprites;
+
+        KnightGame::GameWorld mWorld;
+
+        uint16_t mScrollY;
+        double mScrollY_F;
+
+    private:
+        uint16_t mVerticalMapOffset = 0;
+        bool     mUpdateTileSet;
+        bool     mBossReached = false;
+};
+
+class Level1State : public LevelBaseState {
+    public:
+        Level1State(V99x8& ppu, GameEngine::StateManager& sm): LevelBaseState(ppu, sm) {}
+
+    protected:
+        void enter();
+        void update(double dt);
         void exit() override;
         void handleInput(retro_input_state_t input_cb) override;
         void render() override;
-        void renderAudio(int16_t* pSamplesData, size_t samples_per_frame) override {};
-
-    private:
-        V99x8& mPPU;
-
-        uint16_t mScrollY;
+        void renderAudio(int16_t* pSamplesData, size_t samples_per_frame) override;
 };
 
 class BootState : public GameEngine::GameState {
@@ -69,6 +124,9 @@ class BootState : public GameEngine::GameState {
         void render() override; // Draws fake boot screen
         void renderAudio(int16_t* pSamplesData, size_t samples_per_frame) override;
 
+    protected:
+        void finish();
+
     private:
         V99x8& mPPU;
 
@@ -82,9 +140,7 @@ class BootState : public GameEngine::GameState {
 
 class TestMsxGame : public GameEngine::EngineCore<V99x8> {
     public:
-        TestMsxGame(double target_fps = 60.0): GameEngine::EngineCore<V99x8>(target_fps) {
-
-        }
+        TestMsxGame(double target_fps = 60.0);
 
         virtual constexpr uint16_t getFramebufferWidth() const { return FRAMEBUFFER_WIDTH; }
         virtual constexpr uint16_t getFramebufferHeight() const { return FRAMEBUFFER_HEIGHT; }

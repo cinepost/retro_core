@@ -1,3 +1,5 @@
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
 # Define file paths for static data generation
 set(NES_DEFAULT_FONT_CHR_INPUT_FILE "${PROJECT_DIR}/assets/nes/nes_default_font.chr")
 set(NES_DEFAULT_FONT_CHR_GENERATED_CPP "${CMAKE_CURRENT_BINARY_DIR}/generated/sprites_chr.cpp")
@@ -14,6 +16,34 @@ add_custom_command(
     VERBATIM
 )
 
+# Level assets
+
+set(LEVEL_01_TILES_PNG_FILE "${PROJECT_DIR}/games/virt_msx/KnightmareW/tiled_data/level_1_tiles.png")
+set(LEVEL_01_TILES_PNG_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/level_01_tiles.png.hpp")
+
+set(PNG_TO_MSX_TILES_CONVERTER_SCRIPT "${PROJECT_DIR}/scripts/png_to_msx_tiles_hpp.py")
+add_custom_command(
+    OUTPUT ${LEVEL_01_TILES_PNG_HEADER}
+    COMMAND ${Python3_EXECUTABLE} "${PNG_TO_MSX_TILES_CONVERTER_SCRIPT}" "${LEVEL_01_TILES_PNG_FILE}" "${LEVEL_01_TILES_PNG_HEADER}"
+    DEPENDS ${LEVEL_01_TILES_PNG_FILE} "${PNG_TO_MSX_TILES_CONVERTER_SCRIPT}"
+    COMMENT "Converting PNG image ${LEVEL_01_TILES_PNG_FILE} to MSX tiles C++ header ..."
+    VERBATIM
+)
+
+set(LEVEL_01_MAP_TMX_FILE "${PROJECT_DIR}/games/virt_msx/KnightmareW/tiled_data/level_01.tmx")
+set(LEVEL_01_MAP_TMX_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/level_01.tmx.hpp")
+
+set(TMX_TO_HPP_CONVERTER_SCRIPT "${PROJECT_DIR}/scripts/tiled_tmx_to_hpp.py")
+add_custom_command(
+    OUTPUT ${LEVEL_01_MAP_TMX_HEADER}
+    COMMAND ${Python3_EXECUTABLE} "${TMX_TO_HPP_CONVERTER_SCRIPT}" "${LEVEL_01_MAP_TMX_FILE}" "${LEVEL_01_MAP_TMX_HEADER}"
+    DEPENDS ${LEVEL_01_MAP_TMX_FILE} "${TMX_TO_HPP_CONVERTER_SCRIPT}"
+    COMMENT "Converting Tiled TMX map ${LEVEL_01_MAP_TMX_FILE} to C++ header ..."
+    VERBATIM
+)
+
+# Game library
+
 add_compile_options(-march=native)
 
 add_library(core_test MODULE
@@ -21,6 +51,7 @@ add_library(core_test MODULE
     game.cpp
     boot_state.cpp
     intro_state.cpp
+    level_base_state.cpp
     level1_state.cpp
 
     #Generated static data
@@ -28,6 +59,10 @@ add_library(core_test MODULE
 
     #Static data
     ${PROJECT_DIR}/assets/msx/knightmare_ref.cpp
+
+    #Generated levels tiles and maps data
+    ${LEVEL_01_TILES_PNG_HEADER}
+    ${LEVEL_01_MAP_TMX_HEADER}
 )
 
 target_compile_options(core_test PRIVATE
@@ -61,6 +96,7 @@ target_include_directories(core_test PRIVATE
 	/usr/include/libretro-common
 	${PROJECT_DIR}/src
     ${EXTERNAL_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 
 if(UNIX AND NOT APPLE)

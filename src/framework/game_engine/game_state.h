@@ -26,11 +26,11 @@ class GameState {
         void exitState() { exit(); }
         void renderState() { render(); }
         void renderStateAudio(int16_t* pSamplesData, size_t samples_per_frame) { renderAudio(pSamplesData, samples_per_frame); }
-        void handleStateInput(retro_input_state_t cb) { handleInput(cb); }
+        void handleStateInput(retro_input_state_t input_cb) { if(input_cb) handleInput(input_cb); }
 
     protected:
         virtual void exit() = 0;
-        virtual void handleInput(retro_input_state_t cb) = 0;
+        virtual void handleInput(retro_input_state_t input_cb) = 0;
         virtual void render() = 0;
         virtual void renderAudio(int16_t* pSamplesData, size_t samples_per_frame) = 0;
         virtual void enter() = 0;
@@ -38,6 +38,15 @@ class GameState {
 
     protected:
         double getTimeElapsed() const { return mTimeElapsed; }
+
+        inline bool isAnyKeyPressed(retro_input_state_t input_cb, unsigned port) {
+            for (unsigned key = RETROK_FIRST; key < RETROK_LAST; ++key) {
+                int16_t state = input_cb(port, RETRO_DEVICE_KEYBOARD, 0, key); // Pass RETRO_DEVICE_KEYBOARD, device index (0), and the key ID
+                if (state != 0) return true; // A key press was detected!
+            }
+            return false; // No keys are pressed
+        }
+
         StateManager& mStateManager;
 
     private:

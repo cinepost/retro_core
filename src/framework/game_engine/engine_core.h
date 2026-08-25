@@ -53,13 +53,13 @@ using Duration = std::chrono::duration<double>;
 template<typename PPU>
 class EngineCore {
     public:
-        EngineCore(double targetFps = 60.0) {
+        EngineCore(double targetFps = 60.0): mPPU() {
             assert(targetFps > 0.0f);
 
             mTargetFps = targetFps;
             mTargetFrameDuration = 1.0 / mTargetFps;
 
-            mSamplesPerFrame = (44100 / mTargetFps) * 2; 
+            mSamplesPerFrame = (44100.0 / mTargetFps) * 2; 
             mPCMMixBuffer.resize(mSamplesPerFrame);
         }
 
@@ -130,8 +130,8 @@ class EngineCore {
             const uint8_t *buf = nullptr;
             uint32_t stride_bytes = getFramebufferStride();
             struct retro_framebuffer fb = {0};
-            fb.width = mScreenWidth;
-            fb.height = mScreenHeight;
+            fb.width = PPU::getScreenWidth();
+            fb.height = PPU::getScreenHeight();
             fb.access_flags = RETRO_MEMORY_ACCESS_WRITE;
 
             if (m_environ_cb && m_environ_cb(RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER, &fb) && fb.format == RETRO_PIXEL_FORMAT_XRGB8888) {
@@ -141,9 +141,9 @@ class EngineCore {
                 buf = static_cast<const uint8_t*>(fb.data);
             } else {
                 // Rendering into intermediate buffer
-                static std::array<uint8_t, mScreenWidth * mScreenHeight * 4> sFramebuffer; 
-                mPPU.render(sFramebuffer.data(), stride_bytes);
-                buf = sFramebuffer.data();
+               // static std::array<uint8_t, SCREEN_WIDTH * SCREEN_HEIGHT * 4> sFramebuffer; 
+                mPPU.render(mFramebuffer.data(), stride_bytes);
+                buf = mFramebuffer.data();
             }
 
             // Send frame data to the frontend window via Libretro callback
@@ -170,6 +170,8 @@ class EngineCore {
         [[nodiscard]] double getTargetFPS() const { return mTargetFps; }
         [[nodiscard]] double getSoundSamplingRate() const { return mSoundSamplingRate; }
 
+        PPU& getPPU() { return mPPU; }
+
         virtual constexpr uint32_t getFramebufferStride() const = 0;
         virtual constexpr uint16_t getFramebufferWidth() const = 0;
         virtual constexpr uint16_t getFramebufferHeight() const = 0;
@@ -182,18 +184,16 @@ class EngineCore {
         // Expose the manager so derived custom games can load states
         [[nodiscard]] inline StateManager& getStateManager() noexcept { return mStateManager; }
 
-    protected:
-        PPU                         mPPU;
-        static constexpr uint16_t   mScreenWidth = PPU::getScreenWidth();
-        static constexpr uint16_t   mScreenHeight = PPU::getScreenHeight();
-
+    private:
+        PPU mPPU;
+        
     private:
         double  mTargetFps;
         double  mTargetFrameDuration;
         size_t  mSamplesPerFrame;
         double  mSoundSamplingRate = 44100.0;
 
-        std::array<uint32_t, PPU::getScreenWidth() * PPU::getScreenHeight()> mFramebuffer;
+        std::array<uint8_t, PPU::getScreenWidth() * PPU::getScreenHeight() * 4> mFramebuffer;
         std::vector<int16_t> mPCMMixBuffer;
 
         StateManager mStateManager;

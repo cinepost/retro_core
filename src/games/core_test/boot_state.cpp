@@ -23,6 +23,8 @@ void BootState::enter() {
     mScrollY = 16;
 
     mPPU.setScreenMode(RetroCore::PPU::MsxPPU_BASE::ScreenMode::VSCREEN_2);
+    mPPU.disableSprites();
+    mPPU.setBlankingBit(false);
     mPPU.setBorderBackgroundColor(4);
 
     static const std::string amikon_logo_filename = "/home/max/mnt/misc_hdd/dev/retro_core/games/virt_msx/KnightmareW/amikon_logo_01.png";
@@ -94,14 +96,25 @@ void BootState::enter() {
         std::cerr << "Error loading file " << intro_mp3_filename << std::endl;
     }
 
+    mPPU.setBlankingBit(true);
 }
 
 void BootState::exit() {
-
+    mPPU.setBlankingBit(false);
+    mPPU.setBorderBackgroundColor(15);
+    mPPU.clearVRAM();
 }
 
-void BootState::handleInput(retro_input_state_t input_cb) {
+void BootState::finish() {
+    mStateManager.pushState(std::make_unique<IntroState>(mPPU, mStateManager));
+}
 
+
+void BootState::handleInput(retro_input_state_t input_cb) {
+    unsigned port = 0;
+    if(isAnyKeyPressed(input_cb, port)) {
+        finish();
+    }
 }
 
 void BootState::update(double dt) {
@@ -111,7 +124,7 @@ void BootState::update(double dt) {
     }
 
     if(getTimeElapsed() > 2) {
-        mStateManager.pushState(std::make_unique<IntroState>(mPPU, mStateManager));
+        finish();
     }
 }
 

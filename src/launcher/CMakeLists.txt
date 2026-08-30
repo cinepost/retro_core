@@ -1,5 +1,6 @@
 set(SOURCES 
     launcher.cpp
+    crt.cpp
 )
 
 add_executable(launcher ${SOURCES})

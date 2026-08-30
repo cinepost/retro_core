@@ -1,4 +1,5 @@
 #include "game.h"
+#include "common_sprites.png.hpp"
 
 #include <random> 
 
@@ -97,6 +98,11 @@ void LevelBaseState::enter() {
 
     // Common sprite patterns
 
+    for(uint16_t i = 0; i < COMMON_SPRITES_SPRITE_COUNT; ++i) {
+        mPPU.pushSpritePattern(i * 4, &COMMON_SPRITES_DATA[i][0], (uint8_t)COMMON_SPRITES_BYTES_PER_SPRITE);
+    }
+
+/*
     mPPU.pushSpritePattern(0, player_horns_pattern);
     mPPU.pushSpritePattern(4, player_body_pattern);
     mPPU.pushSpritePattern(8, player_shadow_pattern);
@@ -104,7 +110,7 @@ void LevelBaseState::enter() {
     mPPU.pushSpritePattern(16, double_arrow_pattern);
     mPPU.pushSpritePattern(20, fire_arrow_pattern);
     mPPU.pushSpritePattern(24, knife_pattern);
-
+*/
     mPPU.enableSprites();
     mPPU.setBlankingBit(true);
 }

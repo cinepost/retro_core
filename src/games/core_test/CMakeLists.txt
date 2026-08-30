@@ -42,6 +42,19 @@ add_custom_command(
     VERBATIM
 )
 
+set(SPRITES_PNG_FILE "${PROJECT_DIR}/games/virt_msx/KnightmareW/sprites/common_sprites.png")
+set(SPRITES_PNG_FILE_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/common_sprites.png.hpp")
+
+set(SPRITES_TO_PNG_CONVERTER_SCRIPT "${PROJECT_DIR}/scripts/png_to_msx_sprites_hpp.py")
+add_custom_command(
+    OUTPUT ${SPRITES_PNG_FILE_HEADER}
+    COMMAND ${Python3_EXECUTABLE} "${SPRITES_TO_PNG_CONVERTER_SCRIPT}" "${SPRITES_PNG_FILE}" "${SPRITES_PNG_FILE_HEADER}"
+    DEPENDS ${SPRITES_PNG_FILE} "${SPRITES_TO_PNG_CONVERTER_SCRIPT}"
+    COMMENT "Converting common sprites ${SPRITES_PNG_FILE} to C++ header ..."
+    VERBATIM
+)
+
+
 # Game library
 
 add_compile_options(-march=native)
@@ -60,9 +73,10 @@ add_library(core_test MODULE
     #Static data
     ${PROJECT_DIR}/assets/msx/knightmare_ref.cpp
 
-    #Generated levels tiles and maps data
+    #Generated levels tiles, sprites and maps data
     ${LEVEL_01_TILES_PNG_HEADER}
     ${LEVEL_01_MAP_TMX_HEADER}
+    ${SPRITES_PNG_FILE_HEADER}
 )
 
 target_compile_options(core_test PRIVATE

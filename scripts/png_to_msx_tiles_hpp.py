@@ -94,7 +94,7 @@ def png_to_msx_tiles(png_path, hpp_path=None):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python png_to_msx.py <spritesheet.png> [output.hpp]")
+        print("Usage: python png_to_msx_tiles_hpp.py <tiles.png> [output.hpp]")
     else:
         out = sys.argv[2] if len(sys.argv) > 2 else None
         png_to_msx_tiles(sys.argv[1], out)

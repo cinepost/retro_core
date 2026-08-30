@@ -80,15 +80,14 @@ void Level1State::enter() {
     std::bernoulli_distribution d(0.5); // Bernoulli distribution (50% chance of true/false)
 
     uint16_t pattern = 0;
-    for(uint16_t i = 0; i < 10; ++i) {
+    for(uint16_t i = 0; i < 120; ++i) {
         mSprites.push_back({pattern, distr_x(gen), distr_y(gen), d(gen) ? 1 : -1, d(gen) ? 1 : -1});
         pattern += 4;
-        if(pattern > 24) pattern = 0;
     }
 
     // MP3 audio test playback
 
-    static const std::string level_bgm_mp3_filename = "/home/max/mnt/misc_hdd/dev/retro_core/games/virt_msx/KnightmareW/music/level_01_bgm_01.mp3";
+    static const std::string level_bgm_mp3_filename = "/home/max/mnt/misc_hdd/dev/retro_core/games/virt_msx/KnightmareW/music/suno_level_01_bgm_01.mp3";
     const uint8_t* mp3File = mAssetManager.getFile(level_bgm_mp3_filename);
 
     if(mp3File) {
@@ -116,11 +115,15 @@ void Level1State::update(double dt) {
 void Level1State::render() {
 
     uint16_t sprite_id = 0;
+    uint8_t color = 0;
     for(const auto& sprite: mSprites) {
         MsxPPU_BASE::Sprite& hw_sprite = mPPU.getSpriteAttribute(sprite_id++);
         hw_sprite.x = sprite.pos_x;
         hw_sprite.y = sprite.pos_y;
         hw_sprite.index = sprite.pattern;
+        hw_sprite.attribs.color = color++;
+
+        if(color == 16) color = 0;
     }
 }
 

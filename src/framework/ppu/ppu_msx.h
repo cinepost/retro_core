@@ -647,10 +647,8 @@ class MsxPPU final: public MsxPPU_BASE {
 				uint8_t color_index = sprite.attribs.color;
 
 				if constexpr (SCREEN_MODE != ScreenMode::VSCREEN_1 && SCREEN_MODE != ScreenMode::VSCREEN_2 && SCREEN_MODE != ScreenMode::VSCREEN_3) {
-					color_index = (uint8_t)7;
+					assert(false && "Fetch color from table");
 				} 
-
-				color_index = (uint8_t)7;
 
 				uint16_t pattern_word = *pPatternData << 8;
 				if(mSpriteSize == SpriteSize::SPRITE_16) {		

@@ -25,7 +25,7 @@
     #define DLERROR()             dlerror()
 #endif
 
-#include "crt.h"
+#include "shaders.h"
 
 // --- Libretro Input Device and Button ID Constants ---
 #define RETRO_DEVICE_JOYPAD             1
@@ -186,18 +186,19 @@ const std::map<unsigned, SDL_GameControllerButton> g_gamepad_map = {
 SDL_GameController* g_gamepad = nullptr;
 
 // --- Global Hardware States ---
-bool        g_paused = false;
-bool        g_maintain_core_fps = true;
-bool        g_use_shaders = true; // Default
+bool        g_use_shaders = false; // Default
 GLuint      g_core_texture = 0;
 unsigned    g_core_tex_width = 0;
 unsigned    g_core_tex_height = 0;
 unsigned    g_pixel_format = RETRO_PIXEL_FORMAT_RGB565; // Default fallback layout
 bool        g_core_supports_no_game = true; // Default
 
-
-RetroLauncher::CRT g_crt;
-
+// --- Multi-pass FBO and Shader Management States ---
+GLuint g_fbo = 0;
+GLuint g_fbo_texture = 0;
+GLuint g_shader_pass1 = 0; // Pass 1: Core Output Prep / Scaler
+GLuint g_shader_pass2 = 0; // Pass 2: The CRT Physical Screen Geometry & Mask Shader
+GLuint g_vao = 0, g_vbo = 0;
 
 // --- Global Audio Tracking ---
 SDL_AudioDeviceID g_audio_device = 0;
@@ -309,6 +310,25 @@ void draw_hud_string(float start_x, float start_y, const char* text, float scale
     glPopMatrix();
     
     glEnable(GL_TEXTURE_2D); // Re-enable texturing for the next frame iteration
+}
+
+// --- Shader Compiler Utility ---
+GLuint compile_shader_program(const char* vert_src, const char* frag_src) {
+    GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vs, 1, &vert_src, nullptr); 
+    glCompileShader(vs);
+    
+    GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fs, 1, &frag_src, nullptr); 
+    glCompileShader(fs);
+    
+    GLuint prog = glCreateProgram();
+    glAttachShader(prog, vs);
+    glAttachShader(prog, fs);
+    glLinkProgram(prog);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+    return prog;
 }
 
 // Environment callback placeholder
@@ -672,14 +692,42 @@ int main(int argc, char *argv[]) {
         SDL_PauseAudioDevice(g_audio_device, 0); // Unpause hardware stream loop
     }
 
+    // --- Boot and Configure Modern Pipeline Crt Shaders Processor ---
+    g_crt.init();
+
+    // --- Boot and Configure Modern Pipeline Shader Sets ---
+    g_shader_pass1 = compile_shader_program(vertex_shader_src, pass1_fragment_src);
+    g_shader_pass2 = compile_shader_program(vertex_shader_src, pass2_fragment_src);
+
+
     // 4. Setup OpenGL Texture
     glGenTextures(1, &g_core_texture);
     glBindTexture(GL_TEXTURE_2D, g_core_texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    // Create intermediate frame buffers for Pass-2 input streams
+    glGenFramebuffers(1, &g_fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, g_fbo);
+    glGenTextures(1, &g_fbo_texture);
+    glBindTexture(GL_TEXTURE_2D, g_fbo_texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2048, 2048, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_fbo_texture, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // --- Boot and Configure Modern Pipeline Crt Shaders Processor ---
-    g_crt.init(win_w, win_h);
+    // Mapped Mesh structures
+    float vertices[] = {-1.0f, -1.0f,  0.0f, 1.0f,   1.0f, -1.0f,  1.0f, 1.0f,1.0f,  1.0f,  1.0f, 0.0f,  -1.0f,  1.0f,  0.0f, 0.0f};
+    glGenVertexArrays(1, &g_vao);
+    glGenBuffers(1, &g_vbo);
+    glBindVertexArray(g_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, g_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1); 
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
 
     // Active gamepad device tracking query
     if (SDL_NumJoysticks() > 0 && SDL_IsGameController(0)) {
@@ -702,18 +750,6 @@ int main(int argc, char *argv[]) {
             // --- HUD Toggle Hotkey Detection ---
             else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F3) {
                 g_hud_visible = !g_hud_visible; // Invert the visibility state
-            }
-
-            else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F4) {
-                g_maintain_core_fps = !g_maintain_core_fps;
-            }
-
-            else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_p) {
-                g_paused = !g_paused;
-            }
-
-            else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_s) {
-                g_use_shaders = !g_use_shaders;
             }
 
             // --- Track Hotplug Events Live ---
@@ -740,7 +776,7 @@ int main(int argc, char *argv[]) {
         uint64_t current_time = SDL_GetPerformanceCounter();
 
         // Check if we are running ahead of the core's native target timeline
-        if (current_time < g_next_frame_time && g_maintain_core_fps) {
+        if (current_time < g_next_frame_time) {
             uint64_t ticks_to_wait = g_next_frame_time - current_time;
             double ms_to_wait = ((double)ticks_to_wait * 1000.0) / (double)SDL_GetPerformanceFrequency();
 
@@ -769,14 +805,35 @@ int main(int argc, char *argv[]) {
         }
 
         // Run one frame of emulation
-        if(!g_paused)retro_run();
+        retro_run();
 
-        bool legacy_render = !g_use_shaders;
         if(g_use_shaders) {
-            legacy_render = !g_crt.process(g_core_texture, g_core_tex_width, g_core_tex_height);
-        } 
+            // ==========================================// PASS 1: Render Game Texture to the FBO Buffer// ==========================================
+            glBindFramebuffer(GL_FRAMEBUFFER, g_fbo);
+            glViewport(0, 0, g_core_tex_width, g_core_tex_height);
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glUseProgram(g_shader_pass1);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, g_core_texture);
+            glUniform1i(glGetUniformLocation(g_shader_pass1, "uTexture"), 0);
+            glBindVertexArray(g_vao); 
+            glDrawArrays(GL_QUADS, 0, 4);
 
-        if(legacy_render){
+            // ==========================================// PASS 2: Render FBO to Monitor via CRT Shader// ==========================================
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, win_w, win_h);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glUseProgram(g_shader_pass2);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, g_fbo_texture);
+            glUniform1i(glGetUniformLocation(g_shader_pass2, "uTexture"), 0);
+            glUniform2f(glGetUniformLocation(g_shader_pass2, "uCoreResolution"), (float)g_core_tex_width, (float)g_core_tex_height);
+            glUniform2f(glGetUniformLocation(g_shader_pass2, "uOutResolution"), (float)win_w, (float)win_h);
+            glBindVertexArray(g_vao); 
+            glDrawArrays(GL_QUADS, 0, 4);
+        } else {
+
             // Render the frame onto screen via OpenGL
             glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT);
@@ -795,14 +852,13 @@ int main(int argc, char *argv[]) {
         }
 
         // --- RENDER HUD OVERLAY (IF ENABLED) ---
-        
-        // --- 1. DYNAMIC FPS CALCULATION ---
-        g_hud_frame_count++;
-        uint64_t hud_now = SDL_GetPerformanceCounter();
-        uint64_t hud_elapsed_ticks = hud_now - g_hud_last_time;
-        double hud_elapsed_sec = (double)hud_elapsed_ticks / (double)SDL_GetPerformanceFrequency();
-
         if (g_hud_visible) {
+            // --- 1. DYNAMIC FPS CALCULATION ---
+            g_hud_frame_count++;
+            uint64_t hud_now = SDL_GetPerformanceCounter();
+            uint64_t hud_elapsed_ticks = hud_now - g_hud_last_time;
+            double hud_elapsed_sec = (double)hud_elapsed_ticks / (double)SDL_GetPerformanceFrequency();
+
             // Recalculate and update the text string once every 0.5 seconds to keep it readable
             if (hud_elapsed_sec >= 0.5) {
                 g_hud_current_fps = (float)((double)g_hud_frame_count / hud_elapsed_sec);
@@ -833,8 +889,14 @@ int main(int argc, char *argv[]) {
     }
 
     // 6. Cleanup & Shutdown
-    g_crt.destroy();
+    // Teardown modern contexts safely
+    glDeleteFramebuffers(1, &g_fbo);
+    glDeleteTextures(1, &g_fbo_texture);
     glDeleteTextures(1, &g_core_texture);
+    glDeleteVertexArrays(1, &g_vao);
+    glDeleteBuffers(1, &g_vbo);
+    glDeleteProgram(g_shader_pass1);
+    glDeleteProgram(g_shader_pass2);
 
     if (g_gamepad) SDL_GameControllerClose(g_gamepad);
     if (g_audio_device) {SDL_CloseAudioDevice(g_audio_device);}

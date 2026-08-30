@@ -17,16 +17,16 @@
             "scale": 0.60498046875,
             "selectedLayer": 6,
             "viewCenter": {
-                "x": 257.8595641646489,
-                "y": 628.9459241323647
+                "x": 1154.5827280064568,
+                "y": 678.5343018563357
             }
         },
         "level_01.tmx": {
-            "scale": 2,
+            "scale": 4,
             "selectedLayer": 5,
             "viewCenter": {
-                "x": 243.75,
-                "y": 597.25
+                "x": 8.125,
+                "y": 8.125
             }
         },
         "level_01_tileset.tsx": {

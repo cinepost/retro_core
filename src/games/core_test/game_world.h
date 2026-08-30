@@ -116,7 +116,7 @@ struct GameWorld {
                     tile_index_offset = 64;
             }
 
-            return tile_index_offset + (x | (x << y));
+            return tile_index_offset + (x | (y << 1));
         }
     };
 

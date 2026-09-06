@@ -32,7 +32,7 @@ namespace RetroCore {
 }
 
 [[nodiscard]] constexpr uint8_t bitsToBytesCount(uint8_t bits) noexcept {
-    return (bits + 7) / 8;
+    return uint8_t(bits + 7) / 8;
 }
 
 template <auto A, auto B>

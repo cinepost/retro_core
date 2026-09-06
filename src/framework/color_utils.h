@@ -12,7 +12,7 @@ namespace RetroCore {
     // Add half of the divisor (64 / 2 = 32) to round to nearest bucket
     // Shift right by 6
     // Clamp the maximum output to 3 (2-bit max) to prevent overflow
-    return std::min<uint8_t>(3, (value8 + 32) >> 6);
+    return std::min<uint8_t>(3, uint8_t(value8 + 32) >> 6);
 }
 
 /**

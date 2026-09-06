@@ -14,6 +14,15 @@ union RGBA8888 {
     uint32_t v;
 
     // Access individual channels based on system architecture
+    #if defined(__clang__)
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wgnu-anonymous-struct"
+        #pragma clang diagnostic ignored "-Wnested-anon-types"
+    #elif defined(__GNUC__) // True for GCC
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wpedantic" 
+    #endif
+
     struct {
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
         uint8_t r;
@@ -28,11 +37,17 @@ union RGBA8888 {
 #endif
     };
 
+    #if defined(__clang__)
+        #pragma clang diagnostic pop
+    #elif defined(__GNUC__)
+        #pragma GCC diagnostic pop
+    #endif
+
     inline uint32_t asXRGB8888() const {
         return v >> 8;
     }
 
-    inline operator uint32_t() const { 
+    constexpr operator uint32_t() const noexcept { 
         return v; 
     }
 
@@ -47,15 +62,21 @@ union RGBA8888 {
     }
 
     // Right Shift Operator: Color >> Bits
-    inline uint32_t operator>>(int shift) const {
+    constexpr uint32_t operator>>(int shift) const noexcept {
         return v >> shift;
     }
 
     RGBA8888() = default;
 
     constexpr RGBA8888(uint32_t _v): v(_v) {}
+
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
     constexpr RGBA8888(uint8_t _r, uint8_t _g, uint8_t _b): r(_r), g(_g), b(_b), a(255) {}
     constexpr RGBA8888(uint8_t _r, uint8_t _g, uint8_t _b, uint8_t _a): r(_r), g(_g), b(_b), a(_a) {}
+#else // Defaulting to Little-Endian (x86_64, modern ARM, etc.)
+    constexpr RGBA8888(uint8_t _r, uint8_t _g, uint8_t _b): a(255), b(_b), g(_g), r(_r) {}
+    constexpr RGBA8888(uint8_t _r, uint8_t _g, uint8_t _b, uint8_t _a): a(_a), b(_b), g(_g), r(_r) {}
+#endif
 
 };
 
@@ -64,6 +85,15 @@ union RGB111 {
     uint8_t v;
 
     // Access individual 1-bit color channels
+    #if defined(__clang__)
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wgnu-anonymous-struct"
+        #pragma clang diagnostic ignored "-Wnested-anon-types"
+    #elif defined(__GNUC__) // True for GCC
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wpedantic" 
+    #endif
+
     struct {
         uint8_t unused : 5; // 5 bits (0-4) 
         uint8_t b      : 1; // 1 bit (5)
@@ -71,7 +101,13 @@ union RGB111 {
         uint8_t r      : 1; // 1 bit (7)
     };
 
-    inline operator uint8_t() const { 
+    #if defined(__clang__)
+        #pragma clang diagnostic pop
+    #elif defined(__GNUC__)
+        #pragma GCC diagnostic pop
+    #endif
+
+    constexpr operator uint8_t() const noexcept { 
         return v; 
     }
 
@@ -86,15 +122,18 @@ union RGB111 {
     }
 
     // Right Shift Operator: Color >> Bits
-    inline uint8_t operator>>(int shift) const {
+    constexpr uint8_t operator>>(int shift) const noexcept {
         return v >> shift;
     }
 
     RGB111() = default;
 
     constexpr RGB111(uint8_t _v):v(_v) {}
-    constexpr RGB111(uint8_t _r, uint8_t _g, uint8_t _b): r(_r), g(_g), b(_b) {}
-
+    constexpr RGB111(uint8_t _r, uint8_t _g, uint8_t _b) 
+        : b(static_cast<uint8_t>(_b & 0x01)) // Mask to 1 bits (max value 1)
+        , g(static_cast<uint8_t>(_g & 0x01)) // Mask to 1 bits (max value 1)
+        , r(static_cast<uint8_t>(_r & 0x01)) // Mask to 1 bits (max value 1)
+    {}
 };
 
 union RGB222 {
@@ -102,6 +141,15 @@ union RGB222 {
     uint8_t v;
 
     // Access individual 2-bit color channels
+    #if defined(__clang__)
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wgnu-anonymous-struct"
+        #pragma clang diagnostic ignored "-Wnested-anon-types"
+    #elif defined(__GNUC__) // True for GCC
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wpedantic" 
+    #endif
+
     struct {
         uint8_t unused : 2; // Lowest 3 bits (0-1)
         uint8_t b      : 2; // Middle 3 bits (2-3)
@@ -109,7 +157,13 @@ union RGB222 {
         uint8_t r      : 2; // Remainder bits at the top (6-7)
     };
 
-    inline operator uint8_t() const { 
+    #if defined(__clang__)
+        #pragma clang diagnostic pop
+    #elif defined(__GNUC__)
+        #pragma GCC diagnostic pop
+    #endif
+
+    constexpr operator uint8_t() const noexcept { 
         return v; 
     }
 
@@ -124,15 +178,18 @@ union RGB222 {
     }
 
     // Right Shift Operator: Color >> Bits
-    inline uint8_t operator>>(int shift) const {
+    constexpr uint8_t operator>>(int shift) const noexcept {
         return v >> shift;
     }
 
     RGB222() = default;
 
     constexpr RGB222(uint8_t _v):v(_v) {}
-    constexpr RGB222(uint8_t _r, uint8_t _g, uint8_t _b): r(_r), g(_g), b(_b) {}
-
+    constexpr RGB222(uint8_t _r, uint8_t _g, uint8_t _b) 
+        : b(static_cast<uint8_t>(_b & 0x03)) // Mask to 2 bits (max value 3)
+        , g(static_cast<uint8_t>(_g & 0x03)) // Mask to 2 bits (max value 3)
+        , r(static_cast<uint8_t>(_r & 0x03)) //Mask to 2 bits (max value 3)
+    {}
 };
 
 union RGB333 {
@@ -140,6 +197,15 @@ union RGB333 {
     uint16_t v;
 
     // Access individual 3-bit color channels
+    #if defined(__clang__)
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wgnu-anonymous-struct"
+        #pragma clang diagnostic ignored "-Wnested-anon-types"
+    #elif defined(__GNUC__) // True for GCC
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wpedantic" 
+    #endif
+
     struct {
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
         uint16_t unused : 7; // Remainder bits at the top
@@ -154,7 +220,13 @@ union RGB333 {
 #endif
     };
 
-    inline operator uint16_t() const { 
+    #if defined(__clang__)
+        #pragma clang diagnostic pop
+    #elif defined(__GNUC__)
+        #pragma GCC diagnostic pop
+    #endif
+
+    constexpr operator uint16_t() const noexcept { 
         return v; 
     }
 
@@ -169,15 +241,28 @@ union RGB333 {
     }
 
     // Right Shift Operator: Color >> Bits
-    inline uint16_t operator>>(int shift) const {
+    constexpr uint16_t operator>>(int shift) const noexcept {
         return v >> shift;
     }
 
 	RGB333() = default;
 
     constexpr RGB333(uint16_t _v):v(_v) {}
-    constexpr RGB333(uint8_t _r, uint8_t _g, uint8_t _b): r(_r), g(_g), b(_b) {}
-
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    //constexpr RGB333(uint8_t _r, uint8_t _g, uint8_t _b): r(_r), g(_g), b(_b) {}
+    constexpr RGB333(uint8_t _r, uint8_t _g, uint8_t _b) 
+        : r(static_cast<uint16_t>(_r & 0x0007)) // Mask to 3 bits (max value 7)
+        , g(static_cast<uint16_t>(_g & 0x0007)) // Mask to 3 bits (max value 7)
+        , b(static_cast<uint16_t>(_b & 0x0007)) // Mask to 3 bits (max value 7)
+    {}
+#else // Defaulting to Little-Endian (x86_64, modern ARM, etc.)
+    //constexpr RGB333(uint8_t _r, uint8_t _g, uint8_t _b): b(_b), g(_g), r(_r) {}
+    constexpr RGB333(uint8_t _r, uint8_t _g, uint8_t _b) 
+        : b(static_cast<uint16_t>(_b & 0x0007)) // Mask to 3 bits (max value 7)
+        , g(static_cast<uint16_t>(_g & 0x0007)) // Mask to 3 bits (max value 7)
+        , r(static_cast<uint16_t>(_r & 0x0007)) // Mask to 3 bits (max value 7)
+    {}
+#endif
 };
 
 union GRB332 {
@@ -185,13 +270,28 @@ union GRB332 {
     uint8_t v;
 
     // Access individual 3-bit color channels
+    #if defined(__clang__)
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wgnu-anonymous-struct"
+        #pragma clang diagnostic ignored "-Wnested-anon-types"
+    #elif defined(__GNUC__) // True for GCC
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wpedantic" 
+    #endif
+
     struct {
         uint8_t g      : 3; // Lowest 3 bits (0-2)
         uint8_t r      : 3; // Middle 3 bits (3-5)
-        uint8_t b      : 1; // High 2 bits (6-7)
+        uint8_t b      : 2; // High 2 bits (6-7)
     };
 
-    inline operator uint8_t() const { 
+    #if defined(__clang__)
+        #pragma clang diagnostic pop
+    #elif defined(__GNUC__)
+        #pragma GCC diagnostic pop
+    #endif
+
+    constexpr operator uint8_t() const noexcept { 
         return v; 
     }
 
@@ -206,14 +306,18 @@ union GRB332 {
     }
 
     // Right Shift Operator: Color >> Bits
-    inline uint8_t operator>>(int shift) const {
+    constexpr uint8_t operator>>(int shift) const noexcept {
         return v >> shift;
     }
 
     GRB332() = default;
 
     constexpr GRB332(uint8_t _v):v(_v) {}
-    constexpr GRB332(uint8_t _r, uint8_t _g, uint8_t _b): r(_r), g(_g), b(_b) {}
+    constexpr GRB332(uint8_t _r, uint8_t _g, uint8_t _b) 
+        : g(static_cast<uint8_t>(_g & 0x07)) // Mask to 3 bits (max value 7)
+        , r(static_cast<uint8_t>(_r & 0x07)) // Mask to 3 bits (max value 7)
+        , b(static_cast<uint8_t>(_b & 0x03)) // Mask to 2 bits (max value 3)
+    {}
 };
 
 union RGB233 {
@@ -221,13 +325,28 @@ union RGB233 {
     uint8_t v;
 
     // Access individual 3-bit color channels
+    #if defined(__clang__)
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wgnu-anonymous-struct"
+        #pragma clang diagnostic ignored "-Wnested-anon-types"
+    #elif defined(__GNUC__) // True for GCC
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wpedantic" 
+    #endif
+
     struct {
         uint8_t r      : 2; // Lowest 2 bits (0-1)
         uint8_t g      : 3; // Middle 3 bits (2-4)
         uint8_t b      : 3; // High 3 bits (5-7)
     };
 
-    inline operator uint8_t() const { 
+    #if defined(__clang__)
+        #pragma clang diagnostic pop
+    #elif defined(__GNUC__)
+        #pragma GCC diagnostic pop
+    #endif
+
+    constexpr operator uint8_t() const noexcept { 
         return v; 
     }
 
@@ -242,14 +361,18 @@ union RGB233 {
     }
 
     // Right Shift Operator: Color >> Bits
-    inline uint8_t operator>>(int shift) const {
+    constexpr uint8_t operator>>(int shift) const noexcept {
         return v >> shift;
     }
 
     RGB233() = default;
 
     constexpr RGB233(uint8_t _v):v(_v) {}
-    constexpr RGB233(uint8_t _r, uint8_t _g, uint8_t _b): r(_r), g(_g), b(_b) {}
+    constexpr RGB233(uint8_t _r, uint8_t _g, uint8_t _b) 
+        : r(static_cast<uint8_t>(_r & 0x03)) // Mask to 2 bits (max value 3)
+        , g(static_cast<uint8_t>(_g & 0x07)) // Mask to 3 bits (max value 7)
+        , b(static_cast<uint8_t>(_b & 0x07)) // Mask to 3 bits (max value 7)
+    {}
 };
 
 inline std::string to_hex_string(const RetroCore::RGBA8888& c) {

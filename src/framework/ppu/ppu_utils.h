@@ -2,7 +2,6 @@
 #define __RETRO_CORE_FRAMEWORK_PPU_PPU_UTILS_H
 
 #include "framework/palette.h"
-#include "framework/ppu/ppu_msx.h"
 
 
 namespace RetroCore {

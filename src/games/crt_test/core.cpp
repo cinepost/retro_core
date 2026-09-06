@@ -14,8 +14,8 @@
 #define MINIMP3_IMPLEMENTATION
 #include "game.h"
 
-#define FRAMEBUFFER_WIDTH 512
-#define FRAMEBUFFER_HEIGHT 288
+#define FRAMEBUFFER_WIDTH 320
+#define FRAMEBUFFER_HEIGHT 224
 
 #define TARGET_FPS 60.0
 #define TARGET_SAMPLE_RATE 44100.0
@@ -102,7 +102,7 @@ void retro_set_controller_port_device(unsigned port, unsigned device) {
 
 void retro_get_system_info(struct retro_system_info *info) {
    memset(info, 0, sizeof(*info));
-   info->library_name     = "TestCore";
+   info->library_name     = "CRTCore";
    info->library_version  = "v1";
    info->need_fullpath    = false;
    info->valid_extensions = NULL; // Anything is fine, we don't care.

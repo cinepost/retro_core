@@ -16,7 +16,8 @@ enum class Platform: uint8_t {
 	SMS,
 	MD,
 	TG16,
-	MSX
+	MSX,
+    RAW
 };
 
 struct FramebufferDims { 
@@ -24,20 +25,43 @@ struct FramebufferDims {
 	uint16_t height; 
 };
 
-struct Coord {
-	uint32_t x;
-	uint32_t y;
+template<typename T>
+struct Vec2 {
+	T x;
+	T y;
 
-	Coord(): x(0u), y(0u) {}
-	Coord(uint32_t _x, uint32_t _y): x(_x), y(_y) {}
-};
+	Vec2(): x(0u), y(0u) {}
+	Vec2(T _x, T _y): x(_x), y(_y) {}
 
-struct CoordRel {
-	int x;
-	int y;
+	bool operator==(const Vec2& other) const {
+        return x == other.x && y == other.y;
+    }
 
-	CoordRel(): x(0), y(0) {}
-	CoordRel(int _x, int _y): x(_x), y(_y) {}
+    bool operator!=(const Vec2& other) const {
+        return !(*this == other);
+    }
+
+    Vec2& operator+=(const Vec2& other) {
+        x += other.x;
+        y += other.y;
+        return *this;
+    }
+
+    Vec2& operator-=(const Vec2& other) {
+        x -= other.x;
+        y -= other.y;
+        return *this;
+    }
+
+    friend Vec2 operator+(Vec2 lhs, const Vec2& rhs) {
+        lhs += rhs;
+        return lhs;
+    }
+
+    friend Vec2 operator-(Vec2 lhs, const Vec2& rhs) {
+        lhs -= rhs;
+        return lhs;
+    }
 };
 
 }  // namespace RetroCore

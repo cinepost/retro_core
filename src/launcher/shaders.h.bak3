@@ -18,7 +18,6 @@ const char* encoder_fragment_src = R"(
     #version 330 core
     in vec2 TexCoord;
     out vec4 FragColor;
-    
     uniform sampler2D uCoreTexture;
     uniform vec2 uEncodedResolution;
     uniform vec2 uCoreResolution;
@@ -81,8 +80,6 @@ const char* encoder_fragment_src = R"(
                 if (uSignalStandard == 1 && uMode == 1) {
                     temporalPhase += float(uFrameCount) * (PI * 0.5);
                 }
-
-                temporalPhase = 0.0;
                 
                 // --- UNIVERSAL RF PHASE JITTER CROSS-TALK ---
                 float rfNoise = 0.0;
@@ -187,11 +184,6 @@ const char* decoder_fragment_src = R"(
 
             // Match the encoder phase shift logic exactly
             float temporalPhase = float(uFrameCount % 2) * PI;
-            if (uSignalStandard == 1 && uMode == 1) {
-                temporalPhase += float(uFrameCount) * (PI * 0.5);
-            }
-
-            temporalPhase = 0.0;
 
             // --- RF DYNAMIC TUNING NOISE OVERLAY ---
             float rfNoise = 0.0;
@@ -303,58 +295,60 @@ const char* decoder_fragment_src = R"(
             float normY = 0.0;
             float testY = 0.0;
 
-            float stepPixels = wavePixelPeriod * 0.25; 
-
-            // ==========================================================
-            // COMPACT 1D 5-TAP SUBCARRIER-COMPENSATED LUMA NOTCH FILTER
-            // ==========================================================
-
-            //stepPixels = 1.0; 
-    
-            float uvLeft2  = clamp(coords.x - (2.0 * texelX), 0.0, 1.0);
-            float uvLeft1  = clamp(coords.x - (1.0 * texelX), 0.0, 1.0);
-            float uvRight1 = clamp(coords.x + (1.0 * texelX), 0.0, 1.0);
-            float uvRight2 = clamp(coords.x + (2.0 * texelX), 0.0, 1.0);
-            
             float sigCenter = texture(uEncodedTexture, vec2(coords.x, coords.y)).r;
-            float sigLeft2  = texture(uEncodedTexture, vec2(uvLeft2,  coords.y)).r;
-            float sigLeft1  = texture(uEncodedTexture, vec2(uvLeft1,  coords.y)).r;
-            float sigRight1 = texture(uEncodedTexture, vec2(uvRight1, coords.y)).r;
-            float sigRight2 = texture(uEncodedTexture, vec2(uvRight2, coords.y)).r;
-
-            float angleCenter = (distortedVirtualX * frequency) + temporalPhase;
-            float angleLeft2  = ((distortedVirtualX - 2.0) * frequency) + temporalPhase;
-            float angleLeft1  = ((distortedVirtualX - 1.0) * frequency) + temporalPhase;
-            float angleRight1 = ((distortedVirtualX + 1.0) * frequency) + temporalPhase;
-            float angleRight2 = ((distortedVirtualX + 2.0) * frequency) + temporalPhase;
-
-            float subcarrierCenter, subcarrierLeft2, subcarrierLeft1, subcarrierRight1, subcarrierRight2;
+            float stepPixels = int(wavePixelPeriod * 0.5); 
 
             if (uSignalStandard == 1) { 
-                subcarrierCenter = baseU * sin(angleCenter) + (baseV * lineAlternatePhase) * cos(angleCenter);
-                subcarrierLeft2  = baseU * sin(angleLeft2)  + (baseV * lineAlternatePhase) * cos(angleLeft2);
-                subcarrierLeft1  = baseU * sin(angleLeft1)  + (baseV * lineAlternatePhase) * cos(angleLeft1);
-                subcarrierRight1 = baseU * sin(angleRight1) + (baseV * lineAlternatePhase) * cos(angleRight1);
-                subcarrierRight2 = baseU * sin(angleRight2) + (baseV * lineAlternatePhase) * cos(angleRight2);
-            } 
-            else { 
-                subcarrierCenter = baseU * sin(angleCenter) + baseV * cos(angleCenter);
-                subcarrierLeft2  = baseU * sin(angleLeft2)  + baseV * cos(angleLeft2);
-                subcarrierLeft1  = baseU * sin(angleLeft1)  + baseV * cos(angleLeft1);
-                subcarrierRight1 = baseU * sin(angleRight1) + baseV * cos(angleRight1);
-                subcarrierRight2 = baseU * sin(angleRight2) + baseV * cos(angleRight2);
+                // PAL PATH
+
+                stepPixels = (uMode == 0) ? 2 : 1; 
+                
+                // Allocate coordinates for 5 symmetric horizontal taps
+                float uvLeft2  = clamp(coords.x - (float(stepPixels * 2) * texelX), 0.0, 1.0);
+                float uvLeft1  = clamp(coords.x - (float(stepPixels)     * texelX), 0.0, 1.0);
+                float uvRight1 = clamp(coords.x + (float(stepPixels)     * texelX), 0.0, 1.0);
+                float uvRight2 = clamp(coords.x + (float(stepPixels * 2) * texelX), 0.0, 1.0);
+                
+                float sigLeft2  = texture(uEncodedTexture, vec2(uvLeft2,  coords.y)).r;
+                float sigLeft1  = texture(uEncodedTexture, vec2(uvLeft1,  coords.y)).r;
+                float sigRight1 = texture(uEncodedTexture, vec2(uvRight1, coords.y)).r;
+                float sigRight2 = texture(uEncodedTexture, vec2(uvRight2, coords.y)).r;
+
+                // Calculate carrier tracking angles across all 5 tap positions
+                float angleCenter = (distortedVirtualX * frequency) + temporalPhase;
+                float angleLeft2  = ((distortedVirtualX - float(stepPixels * 2)) * frequency) + temporalPhase;
+                float angleLeft1  = ((distortedVirtualX - float(stepPixels))     * frequency) + temporalPhase;
+                float angleRight1 = ((distortedVirtualX + float(stepPixels))     * frequency) + temporalPhase;
+                float angleRight2 = ((distortedVirtualX + float(stepPixels * 2)) * frequency) + temporalPhase;
+
+                // Reconstruct independent subcarrier values
+                float subcarrierCenter = baseU * sin(angleCenter) + (baseV * lineAlternatePhase) * cos(angleCenter);
+                float subcarrierLeft2  = baseU * sin(angleLeft2)  + (baseV * lineAlternatePhase) * cos(angleLeft2);
+                float subcarrierLeft1  = baseU * sin(angleLeft1)  + (baseV * lineAlternatePhase) * cos(angleLeft1);
+                float subcarrierRight1 = baseU * sin(angleRight1) + (baseV * lineAlternatePhase) * cos(angleRight1);
+                float subcarrierRight2 = baseU * sin(angleRight2) + (baseV * lineAlternatePhase) * cos(angleRight2);
+
+                // Strip subcarriers to find pure localized luminance values
+                float yCenter = sigCenter - subcarrierCenter;
+                float yLeft2  = sigLeft2  - subcarrierLeft2;
+                float yLeft1  = sigLeft1  - subcarrierLeft1;
+                float yRight1 = sigRight1 - subcarrierRight1;
+                float yRight2 = sigRight2 - subcarrierRight2;
+
+                // Apply a high-order 5-tap binomial distribution matrix [1/16, 4/16, 6/16, 4/16, 1/16]
+                normY = (yLeft2 * 0.0625) + (yLeft1 * 0.25) + (yCenter * 0.375) + (yRight1 * 0.25) + (yRight2 * 0.0625);
+    
+            } else {
+                // NTSC PATH
+                
+                int stepPixels = int(wavePixelPeriod * 0.5); // Always exactly 2 pixels in NTSC
+
+                float sigLeft   = texture(uEncodedTexture, vec2(clamp(coords.x - (float(stepPixels) * texelX), 0.0, 1.0), coords.y)).r;
+                float sigRight  = texture(uEncodedTexture, vec2(clamp(coords.x + (float(stepPixels) * texelX), 0.0, 1.0), coords.y)).r;
+                normY = (sigCenter * 0.5) + (sigLeft * 0.25) + (sigRight * 0.25);
+    
+                testY = normY;
             }
-
-            float yCenter = sigCenter - subcarrierCenter;
-            float yLeft2  = sigLeft2  - subcarrierLeft2;
-            float yLeft1  = sigLeft1  - subcarrierLeft1;
-            float yRight1 = sigRight1 - subcarrierRight1;
-            float yRight2 = sigRight2 - subcarrierRight2;
-
-            normY = (yLeft2 * 0.0625) + (yLeft1 * 0.25) + (yCenter * 0.375) + (yRight1 * 0.25) + (yRight2 * 0.0625);
-
-            testY = normY;
-
 
             // Apply saturation multipliers to final output chroma paths
             float normU = baseU * saturation;
@@ -378,7 +372,7 @@ const char* decoder_fragment_src = R"(
                 //normV = (normV + normV_Next) * 0.5;
             }
 
-            //return vec3(testY);
+            return vec3(testY);
 
             vec3 decodedVector = vec3(normY, normU, normV);
             return vec3((uSignalStandard == 1 ? YUV_TO_RGB * decodedVector : YIQ_TO_RGB * decodedVector));

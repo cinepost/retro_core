@@ -2,8 +2,16 @@
 #define __RETRO_CORE_TEST_GAME_OBJECT_H
 
 #include <cstdint>
+#include "framework/ppu/ppu_msx.h"
 
 namespace KnightGame {
+
+struct Rect {
+    float pos_x;
+    float pos_y;
+    uint16_t width;
+    uint16_t height;
+};
 
 class GameObject {
     public:
@@ -15,7 +23,7 @@ class GameObject {
 
         // Pure virtual functions every game object must implement
         virtual void update(float deltaTime) = 0;
-        virtual void draw() = 0; // Uploads/updates data to your virtual VDP structure
+        virtual void draw(MsxPPU_BASE& ppu) = 0; // Uploads/updates data to your virtual VDP structure
         
         // Inline Getters/Setters for rapid collision checking
         bool isActive() const { return isActive; }

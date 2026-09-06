@@ -28,6 +28,7 @@ add_library(retro_core_lib STATIC
     renderer.cpp
     vdp_utils.cpp
     sound.cpp
+    ppu/ppu_raw.cpp
     ppu/ppu_nes.cpp
     ppu/ppu_msx.cpp
     ppu/ppu_msx_utils.cpp

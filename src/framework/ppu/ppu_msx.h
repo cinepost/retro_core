@@ -376,6 +376,24 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 			return sizeof(Sprite_Color_Line) * kMaximumSpritesCount * 8;
 		}
 
+		// Higher level 
+		void pushTile(uint16_t tile_index, const std::array<uint8_t, 16>& fullData);
+		void pushTile(uint16_t tile_index, const PATTERN_8D_8C& tileData);
+
+		void pushTiles(const std::array<uint8_t, 16>* pTiles, size_t count, uint16_t tile_index_offset) {
+			assert(count <= (tile_index_offset + kMaximumPatternsCount));
+			for(size_t i = 0; i < count; ++i) {
+				pushTile(i + tile_index_offset, pTiles[i]);
+			}
+		}
+
+		/**
+ 		* Pushes 8x8px 1bpp sprite pattern into VRAM.
+ 		*/
+		void pushSpritePattern(uint16_t tile_index, const uint8_t* pSrc, uint8_t bytes_count /* 8 or 32 bytes of data */);
+		void pushSpritePattern(uint16_t tile_index, const std::array<uint8_t, 8>& src);
+		void pushSpritePattern(uint16_t tile_index, const std::array<uint8_t, 32>& src);
+
 	public:
 		[[nodiscard]] static constexpr bool canPaletteBeModified(ScreenMode mode) {
 			switch(mode) {
@@ -560,23 +578,6 @@ class MsxPPU final: public MsxPPU_BASE {
 			if(name_table_size == 0) return;
 			std::memset(&mVRAM[getNameTableAddress()], 0, name_table_size);
 		}
-
-		void pushTile(uint16_t tile_index, const std::array<uint8_t, 16>& fullData);
-		void pushTile(uint16_t tile_index, const PATTERN_8D_8C& tileData);
-
-		void pushTiles(const std::array<uint8_t, 16>* pTiles, size_t count, uint16_t tile_index_offset) {
-			assert(count <= (tile_index_offset + kMaximumPatternsCount));
-			for(size_t i = 0; i < count; ++i) {
-				pushTile(i + tile_index_offset, pTiles[i]);
-			}
-		}
-
-		/**
- 		* Pushes 8x8px 1bpp sprite pattern into VRAM.
- 		*/
-		void pushSpritePattern(uint16_t tile_index, const uint8_t* pSrc, uint8_t bytes_count /* 8 or 32 bytes of data */);
-		void pushSpritePattern(uint16_t tile_index, const std::array<uint8_t, 8>& src);
-		void pushSpritePattern(uint16_t tile_index, const std::array<uint8_t, 32>& src);
 
 		/**
  		* Pushes a complete 4-byte Attribute structure for a single sprite ID into VRAM.

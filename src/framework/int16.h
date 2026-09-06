@@ -10,6 +10,17 @@ namespace RetroCore {
 // Aligned to 4 bytes (2 components * 2 bytes) to optimize cache and register loads
 struct alignas(4) uint16_t2 {
     union {
+
+        // Temporarily silence the pedantic diagnostic checks
+        #if defined(__clang__)
+            #pragma clang diagnostic push
+            #pragma clang diagnostic ignored "-Wgnu-anonymous-struct"
+            #pragma clang diagnostic ignored "-Wnested-anon-types"
+        #elif defined(__GNUC__) // True for GCC
+            #pragma GCC diagnostic push
+            #pragma GCC diagnostic ignored "-Wpedantic" 
+        #endif
+
         struct {
             std::uint16_t x;
             std::uint16_t y;
@@ -22,6 +33,13 @@ struct alignas(4) uint16_t2 {
             std::uint16_t width;
             std::uint16_t height;
         };
+
+        #if defined(__clang__)
+            #pragma clang diagnostic pop
+        #elif defined(__GNUC__)
+            #pragma GCC diagnostic pop
+        #endif
+
         std::uint16_t data[2];
     };
 

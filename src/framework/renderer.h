@@ -15,8 +15,8 @@ namespace RetroCore {
 
 class RendererBase {
 	public:
-		using Coord = RetroCore::Coord;
-		using CoordRel = RetroCore::CoordRel;
+		using Coord = RetroCore::Vec2<uint32_t>;
+		using CoordRel = RetroCore::Vec2<int>;
 		using CursorType = DebugData::CursorType;
 
 		enum class BlitMode { 

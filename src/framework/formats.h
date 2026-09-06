@@ -91,6 +91,8 @@ enum class PixelFormat: uint8_t {
 			return PixelFormat::Indexed2BPP;
 		case Platform::MSX:
 			return PixelFormat::Indexed4BPP;
+		case Platform::RAW:
+			return PixelFormat::RGB888;
 		default:
 			static_assert("Should not be here!");
 			return PixelFormat::NONE;

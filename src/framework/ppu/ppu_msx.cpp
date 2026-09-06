@@ -117,13 +117,11 @@ void MsxPPU<FBDIMS>::cmdHMMM(uint16_t source_x, uint16_t source_y, uint16_t dest
 	}
 }
 
-template <FramebufferDims FBDIMS>
-void MsxPPU<FBDIMS>::pushTile(uint16_t tile_index, const std::array<uint8_t, 16>& fullData) {
+void MsxPPU_BASE::pushTile(uint16_t tile_index, const std::array<uint8_t, 16>& fullData) {
  	pushTile(tile_index, PATTERN_8D_8C(fullData));
 }
 
-template <FramebufferDims FBDIMS>
-void MsxPPU<FBDIMS>::pushTile(uint16_t tile_index, const PATTERN_8D_8C& pattern) {
+void MsxPPU_BASE::pushTile(uint16_t tile_index, const PATTERN_8D_8C& pattern) {
 	if(mScreenMode != MsxPPU_BASE::ScreenMode::VSCREEN_1 && mScreenMode != MsxPPU_BASE::ScreenMode::VSCREEN_2 && mScreenMode != MsxPPU_BASE::ScreenMode::VSCREEN_4) {
 		std::cerr << "Warnging! PATTERN_8D_8C data not supported in " << to_string(mScreenMode);
 		return;
@@ -136,20 +134,18 @@ void MsxPPU<FBDIMS>::pushTile(uint16_t tile_index, const PATTERN_8D_8C& pattern)
 	std::memcpy(&mVRAM[getColorTableAddress() + tile_address_offset], pattern.color.data(), 8);
 }
 
-template <FramebufferDims FBDIMS>
-void MsxPPU<FBDIMS>::pushSpritePattern(uint16_t tile_index, const uint8_t* pSrc, uint8_t bytes_count) {
+void MsxPPU_BASE::pushSpritePattern(uint16_t tile_index, const uint8_t* pSrc, uint8_t bytes_count) {
 	assert(bytes_count == 8 || bytes_count == 32);
 	uint8_t* pDst = &mVRAM[getSpritePatternTableAddress() + (tile_index << 3)];
 	std::memcpy(pDst, pSrc, bytes_count);
 }
 
-template <FramebufferDims FBDIMS>
-void MsxPPU<FBDIMS>::pushSpritePattern(uint16_t tile_index, const std::array<uint8_t, 8>& src) {
+void MsxPPU_BASE::pushSpritePattern(uint16_t tile_index, const std::array<uint8_t, 8>& src) {
 	pushSpritePattern(tile_index, src.data(), 8);
 }
 
-template <FramebufferDims FBDIMS>
-void MsxPPU<FBDIMS>::pushSpritePattern(uint16_t tile_index, const std::array<uint8_t, 32>& src) {
+
+void MsxPPU_BASE::pushSpritePattern(uint16_t tile_index, const std::array<uint8_t, 32>& src) {
 	pushSpritePattern(tile_index, src.data(), 32);
 }
 

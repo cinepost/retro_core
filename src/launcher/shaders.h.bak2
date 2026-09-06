@@ -18,7 +18,6 @@ const char* encoder_fragment_src = R"(
     #version 330 core
     in vec2 TexCoord;
     out vec4 FragColor;
-    
     uniform sampler2D uCoreTexture;
     uniform vec2 uEncodedResolution;
     uniform vec2 uCoreResolution;
@@ -66,23 +65,10 @@ const char* encoder_fragment_src = R"(
                     wavePixelPeriod = 3.0;  
                 }
 
-                // Resolution-Independent Frequency Assignment
-                float frequency = 0.0;
-                if (uSignalStandard == 1) { // PAL Standard Presets
-                    // Detuned PAL Composite from 1.5707963 to 1.592 to break the 2D grid lock.
-                    // PAL RF retains 1.621 to prevent the specific wide-window checkerboard artifact.
-                    frequency = (uMode == 0) ? 1.621 : 1.592; 
-                } else { // NTSC Standard Presets
-                    frequency = (uMode == 0) ? 1.0471975 : 1.5707963; 
-                }
+                // Mathematical Resolution-Independent Frequency Assignment
+                float frequency = (2.0 * PI) / wavePixelPeriod;
 
-                float temporalPhase = float(uFrameCount % 2) * PI;
-
-                if (uSignalStandard == 1 && uMode == 1) {
-                    temporalPhase += float(uFrameCount) * (PI * 0.5);
-                }
-
-                temporalPhase = 0.0;
+                float temporalPhase = float(uFrameCount % 2) * PI * 0.5;
                 
                 // --- UNIVERSAL RF PHASE JITTER CROSS-TALK ---
                 float rfNoise = 0.0;
@@ -186,12 +172,7 @@ const char* decoder_fragment_src = R"(
             float texelY = 1.0 / uEncodedResolution.y;
 
             // Match the encoder phase shift logic exactly
-            float temporalPhase = float(uFrameCount % 2) * PI;
-            if (uSignalStandard == 1 && uMode == 1) {
-                temporalPhase += float(uFrameCount) * (PI * 0.5);
-            }
-
-            temporalPhase = 0.0;
+            float temporalPhase = float(uFrameCount % 2) * PI * 0.5;
 
             // --- RF DYNAMIC TUNING NOISE OVERLAY ---
             float rfNoise = 0.0;
@@ -216,11 +197,6 @@ const char* decoder_fragment_src = R"(
             }
 
             float frequency = (2.0 * PI) / wavePixelPeriod;
-            if (uSignalStandard == 1) {
-                // Synchronized with the detuned PAL frequency matrix profiles
-                frequency = (uMode == 0) ? 1.621 : 1.592;
-            }
-
             float centerAngle = (distortedVirtualX * frequency) + temporalPhase;
 
             float scanlineIndex = floor(coords.y * uEncodedResolution.y);
@@ -229,8 +205,6 @@ const char* decoder_fragment_src = R"(
             // 1. CHROMINANCE DEMODULATION LOOP (Runs First)
             // ==========================================================
             int chromaWidth = int(wavePixelPeriod * 5.0);
-            chromaWidth = (uMode == 0) ? 12 : ((uSignalStandard == 1) ? 4 : 5);
-    
 
             float CH_U = 0.0; 
             float CH_V = 0.0;
@@ -238,7 +212,7 @@ const char* decoder_fragment_src = R"(
             float CH_V_Next = 0.0; // Dynamic tracking register for adjacent line low-pass
             float chromaWeights = 0.0;
 
-            float targetY_Prev = clamp(coords.y - texelY * 2, 0.0, 1.0);
+            float targetY_Prev = clamp(coords.y - texelY *2, 0.0, 1.0);
             float targetY_Next = clamp(coords.y + texelY * 2, 0.0, 1.0);
 
             // Determine the active temporal frame toggle sign
@@ -253,6 +227,12 @@ const char* decoder_fragment_src = R"(
 
             float prevLineAlternatePhase = ((mod(scanlineIndex - 1.0, 2.0) == 1.0) ? -1.0 : 1.0) * ((uSignalStandard == 1) ? frameToggle : 1.0);
             float nextLineAlternatePhase = ((mod(scanlineIndex + 1.0, 2.0) == 1.0) ? -1.0 : 1.0) * ((uSignalStandard == 1) ? frameToggle : 1.0);
+
+            float CH_U_L = 0.0;
+            float CH_V_L = 0.0;
+
+            float CH_U_R = 0.0;
+            float CH_V_R = 0.0;
 
             for (int i = -chromaWidth; i <= chromaWidth; i++) {
                 float offsetUV_X = clamp(coords.x + float(i) * texelX, 0.0, 1.0);
@@ -270,6 +250,21 @@ const char* decoder_fragment_src = R"(
                 CH_V += (signal * cos(angle) * lineAlternatePhase) * windowWeight;
 
                 if (uSignalStandard == 1) {
+                    float signalL = texture(uEncodedTexture, vec2(offsetUV_X - (float(stepPixels) * texelX), coords.y)).r;
+                    float signalR = texture(uEncodedTexture, vec2(offsetUV_X + (float(stepPixels) * texelX), coords.y)).r;
+
+                    //float sampleVirtualX = distortedVirtualX + float(i);
+                    //float sampleVirtualX = distortedVirtualX + float(i);
+
+                    float lAngle = ((sampleVirtualX - (float(stepPixels) * texelX)) * frequency) + temporalPhase;
+                    float rAngle = ((sampleVirtualX + (float(stepPixels) * texelX)) * frequency) + temporalPhase;
+
+                    CH_U_L += (signalL * sin(lAngle)) * windowWeight;
+                    CH_V_L += (signalL * cos(lAngle) * lineAlternatePhase) * windowWeight;
+
+                    CH_U_R += (signalR * sin(rAngle)) * windowWeight;
+                    CH_V_R += (signalR * cos(rAngle) * lineAlternatePhase) * windowWeight;
+
                     float signalPrev = texture(uEncodedTexture, vec2(offsetUV_X, targetY_Prev)).r;
                     float signalNext = texture(uEncodedTexture, vec2(offsetUV_X, targetY_Next)).r;
             
@@ -293,7 +288,7 @@ const char* decoder_fragment_src = R"(
                 float baseV_Next = (CH_V_Next / chromaWeights) * 2.0;
                 // 3-Line Comb Filter Blend: Center gets 50% weight, top/bottom get 25% each
                 
-                baseV = (baseV * 0.5) + (baseV_Prev * 0.25) + (baseV_Next * 0.25);
+                //baseV = (baseV * 0.5) + (baseV_Prev * 0.25) + (baseV_Next * 0.25);
             }
 
             // ==========================================================
@@ -303,58 +298,59 @@ const char* decoder_fragment_src = R"(
             float normY = 0.0;
             float testY = 0.0;
 
-            float stepPixels = wavePixelPeriod * 0.25; 
-
-            // ==========================================================
-            // COMPACT 1D 5-TAP SUBCARRIER-COMPENSATED LUMA NOTCH FILTER
-            // ==========================================================
-
-            //stepPixels = 1.0; 
-    
-            float uvLeft2  = clamp(coords.x - (2.0 * texelX), 0.0, 1.0);
-            float uvLeft1  = clamp(coords.x - (1.0 * texelX), 0.0, 1.0);
-            float uvRight1 = clamp(coords.x + (1.0 * texelX), 0.0, 1.0);
-            float uvRight2 = clamp(coords.x + (2.0 * texelX), 0.0, 1.0);
-            
             float sigCenter = texture(uEncodedTexture, vec2(coords.x, coords.y)).r;
-            float sigLeft2  = texture(uEncodedTexture, vec2(uvLeft2,  coords.y)).r;
-            float sigLeft1  = texture(uEncodedTexture, vec2(uvLeft1,  coords.y)).r;
-            float sigRight1 = texture(uEncodedTexture, vec2(uvRight1, coords.y)).r;
-            float sigRight2 = texture(uEncodedTexture, vec2(uvRight2, coords.y)).r;
-
-            float angleCenter = (distortedVirtualX * frequency) + temporalPhase;
-            float angleLeft2  = ((distortedVirtualX - 2.0) * frequency) + temporalPhase;
-            float angleLeft1  = ((distortedVirtualX - 1.0) * frequency) + temporalPhase;
-            float angleRight1 = ((distortedVirtualX + 1.0) * frequency) + temporalPhase;
-            float angleRight2 = ((distortedVirtualX + 2.0) * frequency) + temporalPhase;
-
-            float subcarrierCenter, subcarrierLeft2, subcarrierLeft1, subcarrierRight1, subcarrierRight2;
 
             if (uSignalStandard == 1) { 
-                subcarrierCenter = baseU * sin(angleCenter) + (baseV * lineAlternatePhase) * cos(angleCenter);
-                subcarrierLeft2  = baseU * sin(angleLeft2)  + (baseV * lineAlternatePhase) * cos(angleLeft2);
-                subcarrierLeft1  = baseU * sin(angleLeft1)  + (baseV * lineAlternatePhase) * cos(angleLeft1);
-                subcarrierRight1 = baseU * sin(angleRight1) + (baseV * lineAlternatePhase) * cos(angleRight1);
-                subcarrierRight2 = baseU * sin(angleRight2) + (baseV * lineAlternatePhase) * cos(angleRight2);
-            } 
-            else { 
-                subcarrierCenter = baseU * sin(angleCenter) + baseV * cos(angleCenter);
-                subcarrierLeft2  = baseU * sin(angleLeft2)  + baseV * cos(angleLeft2);
-                subcarrierLeft1  = baseU * sin(angleLeft1)  + baseV * cos(angleLeft1);
-                subcarrierRight1 = baseU * sin(angleRight1) + baseV * cos(angleRight1);
-                subcarrierRight2 = baseU * sin(angleRight2) + baseV * cos(angleRight2);
+                // PAL PATH
+
+                // Mathematically reconstruct the encoded color subcarrier wave at this specific center pixel
+                float reconstructedSubcarrier = baseU * sin(centerAngle) + (baseV * lineAlternatePhase) * cos(centerAngle);
+                sigCenter = sigCenter - reconstructedSubcarrier;
+
+
+                float stepPixels = int(wavePixelPeriod * 0.5);
+                //float stepPixels = wavePixelPeriod * uFrameCount * 0.001;
+
+                float lAngle = ((distortedVirtualX - (float(stepPixels) * texelX)) * frequency) + temporalPhase;
+                float rAngle = ((distortedVirtualX + (float(stepPixels) * texelX)) * frequency) + temporalPhase;
+
+                float lBaseU = (CH_U_L / chromaWeights) * 2.0;
+                float lBaseV = (CH_V_L / chromaWeights) * 2.0;
+
+                float rBaseU = (CH_U_R / chromaWeights) * 2.0;
+                float rBaseV = (CH_V_R / chromaWeights) * 2.0;
+
+                float lReconstructedSubcarrier = lBaseU * sin(lAngle) + (lBaseU * lineAlternatePhase) * cos(lAngle);
+                float rReconstructedSubcarrier = rBaseU * sin(rAngle) + (rBaseU * lineAlternatePhase) * cos(rAngle);
+
+                float sigLeft   = texture(uEncodedTexture, vec2(clamp(coords.x - (float(stepPixels) * texelX), 0.0, 1.0), coords.y)).r;
+                float sigRight  = texture(uEncodedTexture, vec2(clamp(coords.x + (float(stepPixels) * texelX), 0.0, 1.0), coords.y)).r;
+
+                sigLeft = sigLeft - lReconstructedSubcarrier;
+                sigRight = sigRight - rReconstructedSubcarrier;
+
+                normY = (sigCenter * 0.5) + (sigLeft * 0.25) + (sigRight * 0.25);
+
+                if(TexCoord.x < 0.333) {
+                    testY = sigLeft;
+                } else if (TexCoord.x > 0.666){
+                    testY = sigRight;
+                } else {
+                    testY = sigCenter;
+                }
+
+
+
+            } else {
+                // NTSC PATH
+                
+                int stepPixels = int(wavePixelPeriod * 0.5); // Always exactly 2 pixels in NTSC
+                float sigLeft   = texture(uEncodedTexture, vec2(clamp(coords.x - (float(stepPixels) * texelX), 0.0, 1.0), coords.y)).r;
+                float sigRight  = texture(uEncodedTexture, vec2(clamp(coords.x + (float(stepPixels) * texelX), 0.0, 1.0), coords.y)).r;
+                normY = (sigCenter * 0.5) + (sigLeft * 0.25) + (sigRight * 0.25);
+    
+                testY = normY;
             }
-
-            float yCenter = sigCenter - subcarrierCenter;
-            float yLeft2  = sigLeft2  - subcarrierLeft2;
-            float yLeft1  = sigLeft1  - subcarrierLeft1;
-            float yRight1 = sigRight1 - subcarrierRight1;
-            float yRight2 = sigRight2 - subcarrierRight2;
-
-            normY = (yLeft2 * 0.0625) + (yLeft1 * 0.25) + (yCenter * 0.375) + (yRight1 * 0.25) + (yRight2 * 0.0625);
-
-            testY = normY;
-
 
             // Apply saturation multipliers to final output chroma paths
             float normU = baseU * saturation;
@@ -378,7 +374,7 @@ const char* decoder_fragment_src = R"(
                 //normV = (normV + normV_Next) * 0.5;
             }
 
-            //return vec3(testY);
+            return vec3(testY);
 
             vec3 decodedVector = vec3(normY, normU, normV);
             return vec3((uSignalStandard == 1 ? YUV_TO_RGB * decodedVector : YIQ_TO_RGB * decodedVector));

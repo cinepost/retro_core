@@ -2,6 +2,12 @@
 #define GL_GLEXT_PROTOTYPES 1
 #include <SDL2/SDL_opengl.h>
 
+#include "imgui.h"
+#include "imgui_impl_sdl2.h"
+#include "imgui_impl_opengl3.h"
+
+#include "libretro.h"
+
 #include <iostream>
 #include <map>
 #include <vector>
@@ -27,52 +33,16 @@
 
 #include "crt.h"
 
-// --- Libretro Input Device and Button ID Constants ---
-#define RETRO_DEVICE_JOYPAD             1
-#define RETRO_DEVICE_ANALOG             2
-
-// --- Libretro Analog Index/ID Identifiers ---
-#define RETRO_DEVICE_INDEX_ANALOG_LEFT   0
-#define RETRO_DEVICE_INDEX_ANALOG_RIGHT  1
-#define RETRO_DEVICE_ID_ANALOG_X         0
-#define RETRO_DEVICE_ID_ANALOG_Y         1
-
-// --- Libretro Digital Button IDs ---
-#define RETRO_DEVICE_ID_JOYPAD_B        0
-#define RETRO_DEVICE_ID_JOYPAD_Y        1
-#define RETRO_DEVICE_ID_JOYPAD_SELECT   2
-#define RETRO_DEVICE_ID_JOYPAD_START    3
-#define RETRO_DEVICE_ID_JOYPAD_UP       4
-#define RETRO_DEVICE_ID_JOYPAD_DOWN     5
-#define RETRO_DEVICE_ID_JOYPAD_LEFT     6
-#define RETRO_DEVICE_ID_JOYPAD_RIGHT    7
-#define RETRO_DEVICE_ID_JOYPAD_A        8
-#define RETRO_DEVICE_ID_JOYPAD_X        9
-#define RETRO_DEVICE_ID_JOYPAD_L       10
-#define RETRO_DEVICE_ID_JOYPAD_R       11
-
-// Libretro Log Levels
-enum retro_log_level {
-    RETRO_LOG_DEBUG = 0,
-    RETRO_LOG_INFO,
-    RETRO_LOG_WARN,
-    RETRO_LOG_ERROR,
-    RETRO_LOG_DUMMY = 0x7FFFFFFF
-};
-
-// Callback structure passed by the core
-struct retro_log_callback {
-    void (*log)(enum retro_log_level level, const char *fmt, ...);
-};
 
 // 1. The Frontend Logger function
 void cb_log_printf(enum retro_log_level level, const char *fmt, ...) {
     const char *level_str = "DEBUG";
     switch (level) {
-        case RETRO_LOG_INFO:  level_str = "INFO";  break;
-        case RETRO_LOG_WARN:  level_str = "WARN";  break;
-        case RETRO_LOG_ERROR: level_str = "ERROR"; break;
-        default: break;
+        case RETRO_LOG_DEBUG: level_str = "[CORE DEBUG] "; break;
+        case RETRO_LOG_INFO:  level_str = "[CORE INFO] ";  break;
+        case RETRO_LOG_WARN:  level_str = "[CORE WARN] ";  break;
+        case RETRO_LOG_ERROR: level_str = "[CORE ERROR] "; break;
+        default: level_str = "[CORE] ";break;
     }
 
     printf("[%s] ", level_str);
@@ -84,52 +54,6 @@ void cb_log_printf(enum retro_log_level level, const char *fmt, ...) {
 }
 
 // 1. Libretro Pixel Format Constant Defs (Add if missing)
-#define RETRO_PIXEL_FORMAT_0RGB1555 0
-#define RETRO_PIXEL_FORMAT_XRGB8888 1
-#define RETRO_PIXEL_FORMAT_RGB565   2
-
-#define RETRO_ENVIRONMENT_SET_ROTATION          1
-#define RETRO_ENVIRONMENT_GET_CAN_DUPE          3
-#define RETRO_ENVIRONMENT_GET_LOG_INTERFACE     4
-#define RETRO_ENVIRONMENT_SET_PIXEL_FORMAT      10
-#define RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME   18
-
-// Minimal Libretro API definitions
-#define RETRO_API_VERSION 1
-#define RETRO_DEVICE_DEFAULT 1
-
-struct retro_system_info {
-    const char *library_name;
-    const char *library_version;
-    const char *valid_extensions;
-    bool need_fullpath;
-    bool block_extract;
-};
-
-struct retro_game_geometry {
-    unsigned base_width;
-    unsigned base_height;
-    unsigned max_width;
-    unsigned max_height;
-    float aspect_ratio;
-};
-
-struct retro_system_timing {
-    double fps;
-    double sample_rate;
-};
-
-struct retro_system_av_info {
-    struct retro_game_geometry geometry;
-    struct retro_system_timing timing;
-};
-
-struct retro_game_info {
-    const char *path;
-    const void *data;
-    size_t size;
-    const char *meta;
-};
 
 // Function pointer signatures
 typedef void (*retro_init_t)(void);
@@ -144,6 +68,7 @@ typedef void (*retro_set_audio_sample_batch_t)(size_t (*audio_batch_cb)(const in
 typedef void (*retro_set_input_poll_t)(void (*input_poll_cb)(void));
 typedef void (*retro_set_input_state_t)(int16_t (*input_state_cb)(unsigned port, unsigned device, unsigned index, unsigned id));
 typedef bool (*retro_load_game_t)(const struct retro_game_info *game);
+typedef void (*retro_log_printf_t)(enum retro_log_level level, const char *fmt, ...);
 typedef void (*retro_unload_game_t)(void);
 typedef void (*retro_run_t)(void);
 
@@ -151,6 +76,51 @@ typedef void (*retro_run_t)(void);
 const int16_t ANALOG_DEADZONE = 4000;
 
 // Global input map translating Libretro button IDs to SDL Scancodes
+
+const std::map<SDL_Scancode, unsigned> g_raw_keyboard_map = {
+    { SDL_SCANCODE_A,          97  }, // RETROK_a
+    { SDL_SCANCODE_B,          98  }, // RETROK_b
+    { SDL_SCANCODE_C,          99  }, // RETROK_c
+    { SDL_SCANCODE_D,          100 }, // RETROK_d
+    { SDL_SCANCODE_E,          101 }, // RETROK_e
+    { SDL_SCANCODE_F,          102 }, // RETROK_f
+    { SDL_SCANCODE_G,          103 }, // RETROK_g
+    { SDL_SCANCODE_H,          104 }, // RETROK_h
+    { SDL_SCANCODE_I,          105 }, // RETROK_i
+    { SDL_SCANCODE_J,          106 }, // RETROK_j
+    { SDL_SCANCODE_K,          107 }, // RETROK_k
+    { SDL_SCANCODE_L,          108 }, // RETROK_l
+    { SDL_SCANCODE_M,          109 }, // RETROK_m
+    { SDL_SCANCODE_N,          110 }, // RETROK_n
+    { SDL_SCANCODE_O,          111 }, // RETROK_o
+    { SDL_SCANCODE_P,          112 }, // RETROK_p
+    { SDL_SCANCODE_Q,          113 }, // RETROK_q
+    { SDL_SCANCODE_R,          114 }, // RETROK_r
+    { SDL_SCANCODE_S,          115 }, // RETROK_s
+    { SDL_SCANCODE_T,          116 }, // RETROK_t
+    { SDL_SCANCODE_U,          117 }, // RETROK_u
+    { SDL_SCANCODE_V,          118 }, // RETROK_v
+    { SDL_SCANCODE_W,          119 }, // RETROK_w
+    { SDL_SCANCODE_X,          120 }, // RETROK_x
+    { SDL_SCANCODE_Y,          121 }, // RETROK_y
+    { SDL_SCANCODE_Z,          122 }, // RETROK_z
+    { SDL_SCANCODE_1,          49  }, // RETROK_1
+    { SDL_SCANCODE_2,          50  }, // RETROK_2
+    { SDL_SCANCODE_3,          51  }, // RETROK_3
+    { SDL_SCANCODE_4,          52  }, // RETROK_4
+    { SDL_SCANCODE_5,          53  }, // RETROK_5
+    { SDL_SCANCODE_6,          54  }, // RETROK_6
+    { SDL_SCANCODE_7,          55  }, // RETROK_7
+    { SDL_SCANCODE_8,          56  }, // RETROK_8
+    { SDL_SCANCODE_9,          57  }, // RETROK_9
+    { SDL_SCANCODE_0,          48  }, // RETROK_0
+    { SDL_SCANCODE_RETURN,     13  }, // RETROK_RETURN
+    { SDL_SCANCODE_ESCAPE,     27  }, // RETROK_ESCAPE
+    { SDL_SCANCODE_BACKSPACE,  8   }, // RETROK_BACKSPACE
+    { SDL_SCANCODE_TAB,        9   }, // RETROK_TAB
+    { SDL_SCANCODE_SPACE,      32  }  // RETROK_SPACE
+};
+
 const std::map<unsigned, SDL_Scancode> g_key_map = {
     { RETRO_DEVICE_ID_JOYPAD_UP,     SDL_SCANCODE_UP     }, // D-Pad Up
     { RETRO_DEVICE_ID_JOYPAD_DOWN,   SDL_SCANCODE_DOWN   }, // D-Pad Down
@@ -182,6 +152,9 @@ const std::map<unsigned, SDL_GameControllerButton> g_gamepad_map = {
     { RETRO_DEVICE_ID_JOYPAD_R,      SDL_CONTROLLER_BUTTON_RIGHTSHOULDER  }
 };
 
+// Global core rom data
+std::vector<char> g_rom_data_buffer;
+
 // Global pointer tracking our active USB hardware device
 SDL_GameController* g_gamepad = nullptr;
 
@@ -202,6 +175,20 @@ RetroLauncher::CRT g_crt;
 // --- Global Audio Tracking ---
 SDL_AudioDeviceID g_audio_device = 0;
 
+// --- Global Volume Modifiers ---
+float g_audio_volume = 0.5f;      // Default volume set to 40%
+const float VOLUME_STEP = 0.05f;  // Increase/decrease by 5% increments
+
+// --- Volume HUD Display States ---
+uint32_t g_vol_hud_timeout_ms = 0;   // Timestamp when the overlay should vanish
+char g_vol_hud_string[32] = "";      // Stores string like "VOL: 80%"
+bool g_vol_hud_active = false;       // Flags whether the volume overlay is active
+
+// --- Video Mode HUD Display States ---
+uint32_t g_video_mode_hud_timeout_ms = 0; // Timestamp when the overlay should vanish
+char g_video_mode_hud_string[32] = "";    // Stores string like "COMPONENT NTSC"
+bool g_video_mode_hud_active = true;      // Flags whether the video mode overlay is active
+
 // --- Audio Resampling Configuration States ---
 double g_core_sample_rate = 44100.0; // Overwritten by av_info during boot
 double g_current_resample_rate = 44100.0;
@@ -219,25 +206,56 @@ double g_target_fps = 60.0;
 uint64_t g_frame_duration_counts = 0; // Target duration mapped to performance counter ticks
 uint64_t g_next_frame_time = 0;       // Monotonic timestamp when the next frame is due
 
-// --- Minimalist Embedded 8x8 Font Bitmap Database ---
-// Supports characters: '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', 'F', 'P', 'S', ' '
-const uint8_t GL_HUD_FONT[15][8] = {
-    {0x3C,0x66,0x6E,0x7E,0x76,0x66,0x3C,0x00}, // '0'
-    {0x18,0x18,0x38,0x18,0x18,0x18,0x7E,0x00}, // '1'
-    {0x3C,0x66,0x06,0x0C,0x30,0x60,0x7E,0x00}, // '2'
-    {0x3C,0x66,0x06,0x1C,0x06,0x66,0x3C,0x00}, // '3'
-    {0x0C,0x1C,0x3C,0x6C,0x7E,0x0C,0x1E,0x00}, // '4'
-    {0x7E,0x60,0x7C,0x06,0x06,0x66,0x3C,0x00}, // '5'
-    {0x3C,0x66,0x60,0x7C,0x66,0x66,0x3C,0x00}, // '6'
-    {0x7E,0x66,0x06,0x0C,0x18,0x18,0x18,0x00}, // '7'
-    {0x3C,0x66,0x66,0x3C,0x66,0x66,0x3C,0x00}, // '8'
-    {0x3C,0x66,0x66,0x3E,0x06,0x66,0x3C,0x00}, // '9'
-    {0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x00}, // '.'
-    {0x7E,0x60,0x7C,0x60,0x60,0x60,0xF0,0x00}, // 'F'
-    {0x7C,0x66,0x66,0x7C,0x60,0x60,0xF0,0x00}, // 'P'
-    {0x3C,0x66,0x60,0x3C,0x06,0x66,0x3C,0x00}, // 'S'
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}  // ' '
+// --- Complete Embedded 8x8 Font Bitmap Database (41 Characters) ---
+// Sequence: '0'-'9' (0-9), '.' (10), ':' (11), ' ' (12), A-Z (13-38), '-' (39), '%' (40)
+const uint8_t GL_HUD_FONT[41][8] = {
+    {0x3C,0x66,0x6E,0x7E,0x76,0x66,0x3C,0x00}, // 0: '0'
+    {0x18,0x18,0x38,0x18,0x18,0x18,0x7E,0x00}, // 1: '1'
+    {0x3C,0x66,0x06,0x0C,0x30,0x60,0x7E,0x00}, // 2: '2'
+    {0x3C,0x66,0x06,0x1C,0x06,0x66,0x3C,0x00}, // 3: '3'
+    {0x0C,0x1C,0x3C,0x6C,0x7E,0x0C,0x1E,0x00}, // 4: '4'
+    {0x7E,0x60,0x7C,0x06,0x06,0x66,0x3C,0x00}, // 5: '5'
+    {0x3C,0x66,0x60,0x7C,0x66,0x66,0x3C,0x00}, // 6: '6'
+    {0x7E,0x66,0x06,0x0C,0x18,0x18,0x18,0x00}, // 7: '7'
+    {0x3C,0x66,0x66,0x3C,0x66,0x66,0x3C,0x00}, // 8: '8'
+    {0x3C,0x66,0x66,0x3E,0x06,0x66,0x3C,0x00}, // 9: '9'
+    {0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x00}, // 10: '.'
+    {0x00,0x18,0x18,0x00,0x18,0x18,0x00,0x00}, // 11: ':'
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // 12: ' ' (Space)
+    
+    // --- Capital Letters A - Z (Indices 13 to 38) ---
+    {0x18,0x3C,0x66,0x7E,0x66,0x66,0x66,0x00}, // 13: 'A'
+    {0x7C,0x66,0x66,0x7C,0x66,0x66,0x7C,0x00}, // 14: 'B'
+    {0x3C,0x66,0x60,0x60,0x60,0x66,0x3C,0x00}, // 15: 'C'
+    {0x78,0x6C,0x66,0x66,0x66,0x6C,0x78,0x00}, // 16: 'D'
+    {0x7E,0x60,0x60,0x7C,0x60,0x60,0x7E,0x00}, // 17: 'E'
+    {0x7E,0x60,0x60,0x7C,0x60,0x60,0x60,0x00}, // 18: 'F'
+    {0x3C,0x66,0x60,0x6C,0x66,0x66,0x3A,0x00}, // 19: 'G'
+    {0x66,0x66,0x66,0x7E,0x66,0x66,0x66,0x00}, // 20: 'H'
+    {0x3E,0x0C,0x0C,0x0C,0x0C,0x0C,0x3E,0x00}, // 21: 'I'
+    {0x1E,0x06,0x06,0x06,0x06,0x66,0x3C,0x00}, // 22: 'J'
+    {0x66,0x6C,0x78,0x70,0x78,0x6C,0x66,0x00}, // 23: 'K'
+    {0x60,0x60,0x60,0x60,0x60,0x60,0x7E,0x00}, // 24: 'L'
+    {0x63,0x77,0x7F,0x6B,0x63,0x63,0x63,0x00}, // 25: 'M'
+    {0x66,0x76,0x7E,0x7E,0x6E,0x66,0x66,0x00}, // 26: 'N'
+    {0x3C,0x66,0x66,0x66,0x66,0x66,0x3C,0x00}, // 27: 'O'
+    {0x7C,0x66,0x66,0x7C,0x60,0x60,0x60,0x00}, // 28: 'P'
+    {0x3C,0x66,0x66,0x66,0x6E,0x6C,0x36,0x00}, // 29: 'Q'
+    {0x7C,0x66,0x66,0x7C,0x6C,0x66,0x66,0x00}, // 30: 'R'
+    {0x3C,0x66,0x60,0x3C,0x06,0x66,0x3C,0x00}, // 31: 'S'
+    {0x7E,0x18,0x18,0x18,0x18,0x18,0x18,0x00}, // 32: 'T'
+    {0x66,0x66,0x66,0x66,0x66,0x66,0x3C,0x00}, // 33: 'U'
+    {0x66,0x66,0x66,0x66,0x66,0x3C,0x18,0x00}, // 34: 'V'
+    {0x63,0x63,0x63,0x6B,0x7F,0x77,0x63,0x00}, // 35: 'W'
+    {0x66,0x66,0x3C,0x18,0x3C,0x66,0x66,0x00}, // 36: 'X'
+    {0x66,0x66,0x3C,0x18,0x18,0x18,0x18,0x00}, // 37: 'Y'
+    {0x7E,0x06,0x0C,0x18,0x30,0x60,0x7E,0x00}, // 38: 'Z'
+    
+    // --- Additional Trailing Utilities ---
+    {0x00,0x00,0x00,0x3E,0x00,0x00,0x00,0x00}, // 39: '-' (Minus / Dash)
+    {0x62,0x66,0x0C,0x18,0x30,0x64,0x46,0x00}  // 40: '%' (Percent)
 };
+
 
 // --- FPS Tracking States ---
 bool g_hud_visible = true; // Set to true by default
@@ -248,13 +266,55 @@ char g_hud_string[16] = "0.0 FPS";
 
 // Maps an ASCII char to our local GL_HUD_FONT dictionary index
 int get_font_index(char c) {
-    if (c >= '0' && c <= '9') return c - '0'; // Indices 0 to 9
-    if (c == '.') return 10;                  // Index 10
-    if (c == 'F' || c == 'f') return 11;      // Index 11
-    if (c == 'P' || c == 'p') return 12;      // Index 12
-    if (c == 'S' || c == 's') return 13;      // Index 13
-    return 14;                                // Index 14 (Space / Fallback)
+    switch (c) {
+        case '0': return 0;
+        case '1': return 1;
+        case '2': return 2;
+        case '3': return 3;
+        case '4': return 4;
+        case '5': return 5;
+        case '6': return 6;
+        case '7': return 7;
+        case '8': return 8;
+        case '9': return 9;
+        case '.': return 10;
+        case ':': return 11;
+        case ' ': return 12;
+        
+        // Stack lowercase and uppercase to map to indices 13-38 smoothly
+        case 'A': case 'a': return 13;
+        case 'B': case 'b': return 14;
+        case 'C': case 'c': return 15;
+        case 'D': case 'd': return 16;
+        case 'E': case 'e': return 17;
+        case 'F': case 'f': return 18;
+        case 'G': case 'g': return 19;
+        case 'H': case 'h': return 20;
+        case 'I': case 'i': return 21;
+        case 'Y': case 'y': return 37; // Keep sequential order
+        case 'J': case 'j': return 22;
+        case 'K': case 'k': return 23;
+        case 'L': case 'l': return 24;
+        case 'M': case 'm': return 25;
+        case 'N': case 'n': return 26;
+        case 'O': case 'o': return 27;
+        case 'P': case 'p': return 28;
+        case 'Q': case 'q': return 29;
+        case 'R': case 'r': return 30;
+        case 'S': case 's': return 31;
+        case 'T': case 't': return 32;
+        case 'U': case 'u': return 33;
+        case 'V': case 'v': return 34;
+        case 'W': case 'w': return 35;
+        case 'X': case 'x': return 36;
+        case 'Z': case 'z': return 38;
+        
+        case '-': return 39;
+        case '%': return 40;
+        default:  return 12; // Fallback to safe blank empty space ' '
+    }
 }
+
 
 // Draws a raw monochrome bit-mapped pixel character string onto the display
 void draw_hud_string(float start_x, float start_y, const char* text, float scale) {
@@ -322,6 +382,8 @@ bool cb_environment(unsigned cmd, void *data) {
         case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
             if (data) {
                 unsigned requested_format = *(const unsigned*)data;
+
+                std::cout << "Core requested format " << requested_format << std::endl;
                 
                 // Explicitly check if the core wants XRGB8888, RGB565, or 0RGB1555
                 if (requested_format == RETRO_PIXEL_FORMAT_XRGB8888 ||
@@ -467,6 +529,20 @@ size_t cb_audio_batch_cb(const int16_t *data, size_t frames) {
         output_buffer[i * 2 + 1] = (int16_t)(s0_r * weight_low + s1_r * weight_high);
     }
 
+    // --- 4b. MULTIPLY SAMPLES BY GLOBAL VOLUME COEFFICIENT ---
+    if (g_audio_volume != 1.0f) {
+        for (size_t i = 0; i < output_buffer.size(); ++i) {
+            // Apply volume scale factor as higher precision float math
+            float scaled_sample = (float)output_buffer[i] * g_audio_volume;
+
+            // Strict hardware boundaries clamping to prevent audio wrapping distortion
+            if (scaled_sample > 32767.0f)  scaled_sample = 32767.0f;
+            if (scaled_sample < -32768.0f) scaled_sample = -32768.0f;
+
+            output_buffer[i] = (int16_t)scaled_sample;
+        }
+    }
+
     // 5. Hard protection boundary against absolute hardware blocking
     if (currently_queued < MAX_BUFFER_BYTES) {
         SDL_QueueAudio(g_audio_device, output_buffer.data(), output_buffer.size() * sizeof(int16_t));
@@ -485,6 +561,20 @@ void cb_input_poll() {
 // 2. Core calls this to check if a specific button is currently pressed
 int16_t cb_input_state(unsigned port, unsigned device, unsigned index, unsigned id) {
     if (port != 0) return 0;
+
+    if (device == RETRO_DEVICE_KEYBOARD) {
+        const Uint8* kbd_state = SDL_GetKeyboardState(NULL);
+
+        // Scan through our map to find which physical SDL scancode corresponds to the core's requested ID
+        for (const auto& pair : g_raw_keyboard_map) {
+            if (pair.second == id) {
+                SDL_Scancode scancode = pair.first;
+                return kbd_state[scancode] ? 1 : 0;
+            }
+        }
+        return 0;
+    }
+
 
     // A. HANDLE ANALOG AXIS STICKS
     if (device == RETRO_DEVICE_ANALOG) {
@@ -603,9 +693,60 @@ int main(int argc, char *argv[]) {
     retro_set_input_state(cb_input_state);
 
     retro_init();
+    retro_system_info sys_info;
+    retro_get_system_info(&sys_info);
+
+    std::cout << "Core Name: " << (sys_info.library_name ? sys_info.library_name : "Unknown") << "\n";
+    std::cout << "Core Version: " << (sys_info.library_version ? sys_info.library_version : "Unknown") << "\n";
+    std::cout << "Storage Strategy: " << (sys_info.need_fullpath ? "Requires Full Path" : "Can Load From Memory") << "\n";
+    std::cout << "Block ZIP Extract: " << (sys_info.block_extract ? "Yes" : "No") << "\n";
+    
+
+    if (sys_info.valid_extensions) {
+        std::cout << "Supported Extensions: ";
+        std::string ext_str(sys_info.valid_extensions);
+        std::stringstream ss(ext_str);
+        std::string ext;
+        
+        while (std::getline(ss, ext, '|')) {
+            std::cout << "." << ext << " ";
+        }
+        std::cout << "\n";
+    }
+
 
     // 2. Load the Game Rom
-    retro_game_info game_info = { rom_path, nullptr, 0, nullptr };
+    retro_game_info game_info = {rom_path, nullptr, 0, nullptr};
+    if(rom_path) {
+        game_info.path = rom_path;
+
+        if (!sys_info.need_fullpath) {
+            std::ifstream file(std::string(rom_path), std::ios::binary | std::ios::ate);
+            if (!file.is_open()) {
+                std::cerr << "Failed to open ROM: " << rom_path << std::endl;
+                return false;
+            }
+
+            std::streamsize size = file.tellg();
+            file.seekg(0, std::ios::beg);
+
+            // Allocate memory and read the file
+            g_rom_data_buffer.resize(size);
+            if (!file.read(g_rom_data_buffer.data(), size)) {
+                std::cerr << "Failed to read ROM data" << std::endl;
+                return false;
+            }
+
+            // Populate memory fields
+            game_info.data = g_rom_data_buffer.data();
+            game_info.size = g_rom_data_buffer.size();
+            
+            std::cout << "Loaded ROM into memory. Size: " << size << " bytes.\n";
+        } else {
+            std::cout << "Passing ROM path directly to core: " << rom_path << "\n";
+        }
+    }
+
     if (!retro_load_game(&game_info)) {
         std::cerr << "Failed to load ROM: " << rom_path << std::endl;
         return 1;
@@ -650,11 +791,27 @@ int main(int argc, char *argv[]) {
     );
 
     SDL_GLContext gl_context = SDL_GL_CreateContext(window);
-    SDL_GL_SetSwapInterval(0); // Enable VSync
-
+    SDL_GL_SetSwapInterval(0); // Enable(1) / Disable(0) VSync
     SDL_GetWindowSize(window, &win_w, &win_h);
 
-    // --- Dynamic SDL Audio Queue Configuration ---
+
+    // 1. Initialize core ImGui contexts
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Allow navigating layout menus with keyboard keys
+
+    // OPTIONAL: Explicitly name or path your ini file (defaults to "imgui.ini")
+    io.IniFilename = "launcher.ini"; 
+
+    // 2. Choose system style profile
+    ImGui::StyleColorsDark();
+
+    // 3. Mount pipeline wrappers
+    ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
+    ImGui_ImplOpenGL3_Init("#version 330 core");
+
+    // Dynamic SDL Audio Queue Configuration
     SDL_AudioSpec target_spec;
     SDL_zero(target_spec);
 
@@ -675,8 +832,8 @@ int main(int argc, char *argv[]) {
     // 4. Setup OpenGL Texture
     glGenTextures(1, &g_core_texture);
     glBindTexture(GL_TEXTURE_2D, g_core_texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     // --- Boot and Configure Modern Pipeline Crt Shaders Processor ---
     g_crt.init(win_w, win_h);
@@ -695,29 +852,86 @@ int main(int argc, char *argv[]) {
         SDL_PumpEvents();
 
         while (SDL_PollEvent(&event)) {
+            ImGui_ImplSDL2_ProcessEvent(&event);
+
             if (event.type == SDL_QUIT || 
                (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)) {
                 running = false;
             }
-            // --- HUD Toggle Hotkey Detection ---
-            else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F3) {
-                g_hud_visible = !g_hud_visible; // Invert the visibility state
+
+            bool volume_changed = false;
+            bool video_mode_changed = false;
+
+            if (event.type == SDL_KEYDOWN) {
+                switch (event.key.keysym.sym) {
+                    case SDLK_F3:
+                        g_hud_visible = !g_hud_visible;
+                        break;
+                    case SDLK_F4:
+                        g_maintain_core_fps = !g_maintain_core_fps;
+                        break;
+                    case SDLK_p:
+                        g_paused = !g_paused;
+                        break;
+                    case SDLK_s: 
+                        g_use_shaders = !g_use_shaders;
+                        break;
+                    case SDLK_v:
+                        {
+                            uint8_t current_video_mode = (uint8_t)g_crt.getMode();
+                            g_crt.setMode((RetroLauncher::CRT::Mode)(++current_video_mode));
+                        }
+                        video_mode_changed = true;
+                        break;
+                    case SDLK_t:
+                        {
+                            uint8_t current_video_standard = (uint8_t)g_crt.getStandard();
+                            g_crt.setStandard((RetroLauncher::CRT::Standard)(++current_video_standard));
+                        }
+                        video_mode_changed = true;
+                        break;
+                    case SDLK_MINUS:
+                    case SDLK_KP_MINUS:
+                        g_audio_volume = std::max(0.0f, g_audio_volume - VOLUME_STEP);
+                        volume_changed = true;
+                        break;
+                    case SDLK_EQUALS:
+                    case SDLK_PLUS:
+                    case SDLK_KP_PLUS:
+                        g_audio_volume = std::min(2.0f, g_audio_volume + VOLUME_STEP); // Boost up to 200%
+                        volume_changed = true;
+                        break;
+
+                }
             }
 
-            else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F4) {
-                g_maintain_core_fps = !g_maintain_core_fps;
+            // Video Mode Change Processing Logic
+            if(video_mode_changed) {
+                // Compile current gain status to text array
+                std::string video_mode_string = g_crt.getModeString();
+                snprintf(g_video_mode_hud_string, sizeof(g_video_mode_hud_string), "%s", video_mode_string.c_str());
+                
+                // Set visible duration frame to 2000ms from right now
+                g_video_mode_hud_timeout_ms = SDL_GetTicks() + 2000;
+                g_video_mode_hud_active = true;
+                
+                std::cout << "[VIDEO MODE] " << video_mode_string << std::endl;
             }
 
-            else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_p) {
-                g_paused = !g_paused;
+            // Volume Hotkey Processing Logic (+ and -)
+            if (volume_changed) {
+                // Compile current gain status to text array
+                snprintf(g_vol_hud_string, sizeof(g_vol_hud_string), "VOL: %d%%", (int)(g_audio_volume * 100.0f));
+                
+                // Set visible duration frame to 2000ms from right now
+                g_vol_hud_timeout_ms = SDL_GetTicks() + 2000;
+                g_vol_hud_active = true;
+                
+                std::cout << "[AUDIO] " << g_vol_hud_string << std::endl;
             }
-
-            else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_s) {
-                g_use_shaders = !g_use_shaders;
-            }
-
+            
             // --- Track Hotplug Events Live ---
-            else if (event.type == SDL_CONTROLLERDEVICEADDED) {
+            if (event.type == SDL_CONTROLLERDEVICEADDED) {
                 if (!g_gamepad) { // If player 1 doesn't have a controller mapped yet
                     g_gamepad = SDL_GameControllerOpen(event.cdevice.which);
                     std::cout << "Gamepad connected: " << SDL_GameControllerName(g_gamepad) << std::endl;
@@ -778,12 +992,11 @@ int main(int argc, char *argv[]) {
 
         if(legacy_render){
             // Render the frame onto screen via OpenGL
-            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
-
             if (g_core_tex_width > 0 && g_core_tex_height > 0) {
                 glEnable(GL_TEXTURE_2D);
                 glBindTexture(GL_TEXTURE_2D, g_core_texture);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
                 glBegin(GL_QUADS);
                     glTexCoord2f(0.0f, 1.0f); glVertex2f(-1.0f, -1.0f);
@@ -794,8 +1007,8 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // --- RENDER HUD OVERLAY (IF ENABLED) ---
-        
+        // RENDER HUD OVERLAY (IF ENABLED)
+
         // --- 1. DYNAMIC FPS CALCULATION ---
         g_hud_frame_count++;
         uint64_t hud_now = SDL_GetPerformanceCounter();
@@ -825,21 +1038,93 @@ int main(int argc, char *argv[]) {
             glColor3f(0.0f, 1.0f, 0.0f);
             draw_hud_string(-0.95f, 0.90f, g_hud_string, px_scale);
             
-            // Reset structural color engine to default solid white so it doesn't tint the game frame
+            // Reset color to default solid white so it doesn't tint the game frame
             glColor3f(1.0f, 1.0f, 1.0f);
         }
+
+        // --- DYNAMIC VOLUME POP-UP RENDERING ---
+        if (g_vol_hud_active) {
+            // Check if our time allocation window has elapsed
+            if (SDL_GetTicks() > g_vol_hud_timeout_ms) {
+                g_vol_hud_active = false; // Gracefully shut off drawing pass
+            } else {
+                float vol_x = 0.65f;  // Placed on the top right quadrant
+                float vol_y = 0.90f;
+                float scale = 0.004f;
+
+                // Draw Drop Shadow (Flat Black offset background)
+                glColor3f(0.0f, 0.0f, 0.0f);
+                draw_hud_string(vol_x + 0.002f, vol_y - 0.002f, g_vol_hud_string, scale);
+
+                // Draw Primary Text (High-contrast Cyan/Light Blue text)
+                glColor3f(0.0f, 1.0f, 1.0f);
+                draw_hud_string(vol_x, vol_y, g_vol_hud_string, scale);
+
+                // Reset color to default solid white so it doesn't tint the game frame
+                glColor3f(1.0f, 1.0f, 1.0f);
+            }
+        }
+
+        // --- DYNAMIC VIDEO MODE POP-UP RENDERING ---
+        if (g_video_mode_hud_active) {
+            // Check if our time allocation window has elapsed
+            if (SDL_GetTicks() > g_video_mode_hud_timeout_ms) {
+                g_video_mode_hud_active = false; // Gracefully shut off drawing pass
+            } else {
+                float vol_x = 0.475f;
+                float vol_y = 0.80f;
+                float scale = 0.004f;
+
+                // Draw Drop Shadow (Flat Black offset background)
+                glColor3f(0.0f, 0.0f, 0.0f);
+                draw_hud_string(vol_x + 0.002f, vol_y - 0.002f, g_video_mode_hud_string, scale);
+
+                // Draw Primary Text (High-contrast Cyan/Light Blue text)
+                glColor3f(0.0f, 1.0f, 1.0f);
+                draw_hud_string(vol_x, vol_y, g_video_mode_hud_string, scale);
+
+                // Reset color to default solid white so it doesn't tint the game frame
+                glColor3f(1.0f, 1.0f, 1.0f);
+            }
+        }
+
+        // ImGui
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplSDL2_NewFrame();
+        ImGui::NewFrame(); 
+        
+        // test
+        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Appearing);
+        ImGui::SetNextWindowSizeConstraints(ImVec2(400.0f, 200.0f), ImVec2(FLT_MAX, FLT_MAX));
+
+        
+        // Open a named window context so window is never NULL
+        ImGui::Begin("Frontend Dashboard", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        
+        ImGui::Text("System Perf: %.1f FPS", g_hud_current_fps);
+        ImGui::SliderFloat("Audio Gain", &g_audio_volume, 0.0f, 2.0f, "%.2f");
+
+        g_crt.drawUI();
+        
+        ImGui::End(); // <-- Safely closes the named window context
+
+
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         SDL_GL_SwapWindow(window);
     }
 
     // 6. Cleanup & Shutdown
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL2_Shutdown();
+    ImGui::DestroyContext();
+
     g_crt.destroy();
     glDeleteTextures(1, &g_core_texture);
 
     if (g_gamepad) SDL_GameControllerClose(g_gamepad);
     if (g_audio_device) {SDL_CloseAudioDevice(g_audio_device);}
-
-    glDeleteTextures(1, &g_core_texture);
 
     retro_unload_game();
     retro_deinit();

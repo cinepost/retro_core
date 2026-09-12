@@ -45,9 +45,7 @@ void Texture::setParameters(bool force) {
 }
 
 void Texture::destroy() {
-    if(mTextureID > 0) {
-        glDeleteTextures(1, &mTextureID);
-    }
+    if(mTextureID != 0) glDeleteTextures(1, &mTextureID);
     mDirty = true;
 }
 

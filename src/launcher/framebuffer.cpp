@@ -42,9 +42,7 @@ void Framebuffer::createBackingResource() {
 
 void Framebuffer::destroy() {
     mTexture.destroy();
-    if(mFboID == 0) {
-        glDeleteFramebuffers(1, &mFboID);
-    }
+    glDeleteFramebuffers(1, &mFboID); mFboID = 0;
 }
 
 Framebuffer::~Framebuffer() {

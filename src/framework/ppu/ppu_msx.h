@@ -33,6 +33,41 @@ namespace PPU {
 
 class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 	public:
+		// Helper struct to carry 1bit 8x8px sprite pattern data around
+		struct PATTERN_8D {
+			std::array<uint8_t, 8> tile;
+
+			PATTERN_8D() {
+    			tile.fill(0);
+    		}
+
+    		PATTERN_8D(const std::array<uint8_t, 8>& tileData) {
+    			tile = tileData;
+    		}
+
+    		PATTERN_8D(uint8_t value) {
+				tile.fill(value);
+			}
+		};
+
+		// Helper struct to carry 1bit 16x16px sprite pattern data around
+		struct PATTERN_32D {
+			std::array<uint8_t, 32> tile;
+
+			PATTERN_32D() {
+    			tile.fill(0);
+    		}
+
+    		PATTERN_32D(const std::array<uint8_t, 32>& tileData) {
+    			tile = tileData;
+    		}
+
+    		PATTERN_32D(uint8_t value) {
+				tile.fill(value);
+			}
+		};
+
+		// Helper struct to carry 8x8px color sprites and patterns data around
 		struct PATTERN_8D_8C {
 			std::array<uint8_t, 8> tile;   // 8 bytes of 8x8 1-bit tile data
     		std::array<uint8_t, 8> color;  // 8 bytes of 4-bit per line color data
@@ -489,7 +524,7 @@ class MsxPPU final: public MsxPPU_BASE {
 			mCurrentPageIndex = index % getVramPagesCount();
 		}
 
-		[[nodiscard]] inline uint8_t getCurrentVramPageIndex() const {
+		[[nodiscard]] inline uint8_t getCurrentVramPageIndex() const noexcept {
 			return mCurrentPageIndex;
 		}
 		
@@ -543,6 +578,7 @@ class MsxPPU final: public MsxPPU_BASE {
 	// Higher level utility functions	
 	public:
 		bool loadIndexedImagePNG(const std::string& filename, uint32_t vram_address, uint16_t img_width, uint16_t img_height, Palette<16>* pPalette = nullptr);
+		bool loadIndexedImagePNG(const uint8_t* pData, size_t data_size, uint32_t vram_address, uint16_t img_width, uint16_t img_height, Palette<16>* pPalette = nullptr);
 
 		void createDefaultMemoryLayout() {
 			// reserve memory for 4 screens
@@ -579,21 +615,20 @@ class MsxPPU final: public MsxPPU_BASE {
 			std::memset(&mVRAM[getNameTableAddress()], 0, name_table_size);
 		}
 
-		/**
- 		* Pushes a complete 4-byte Attribute structure for a single sprite ID into VRAM.
- 		*/
-		inline Sprite& getSpriteAttribute(uint16_t sprite_id) {
+		[[nodiscard]] inline Sprite& getSpriteAttribute(uint16_t sprite_id) {
+			assert(sprite_id < kMaximumSpritesCount);
 			return *reinterpret_cast<Sprite*>(&mVRAM[getSpriteAttributeTableAddress() + sprite_id * sizeof(Sprite)]);
 		}
 
-		inline const uint8_t* getSpritePatternAddress(uint16_t sprite_id) {
+		[[nodiscard]] inline const uint8_t* getSpritePatternPtr(uint16_t sprite_id) {
+			assert(sprite_id < kMaximumSpritesCount);
 			return &mVRAM[getSpritePatternTableAddress() + getSpriteAttribute(sprite_id).index * 8];
 		}
 
 		/**
 		* Sets all sprite attributes Y to kVerticalTerminatorCode. This tells VPD to stop sprites processing. 
 		*/
-		inline void clearAllSpriteAttributes() {
+		inline void clearAllSpriteAttributes() noexcept {
 			for(uint16_t sprite_id = 0; sprite_id < kMaximumSpritesCount; ++sprite_id) {
 				Sprite& sprite = getSpriteAttribute(sprite_id);
 				sprite.y = kVerticalTerminatorCode;
@@ -643,7 +678,7 @@ class MsxPPU final: public MsxPPU_BASE {
 				if((int)line < sprite.y || ((int)line >= sprite.y + sprite_extent)) continue;
 
 				uint16_t pattern_line = line - sprite.y;
-				const uint8_t* pPatternData = getSpritePatternAddress(mVisibleSpriteIndices[i]) + pattern_line;
+				const uint8_t* pPatternData = getSpritePatternPtr(mVisibleSpriteIndices[i]) + pattern_line;
 
 				uint8_t color_index = sprite.attribs.color;
 

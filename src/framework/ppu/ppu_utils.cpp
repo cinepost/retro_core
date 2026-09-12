@@ -13,15 +13,12 @@ namespace PPU {
 namespace Utils {
 
 template <size_t COLOR_COUNT>
-[[nodiscard]] bool loadIndexedPng(const std::string& filename, uint16_t img_width, uint16_t img_height, std::vector<uint8_t>& img_out_data, Palette<COLOR_COUNT>* pOutPalette) {
-    lodepng::State state;
-
+[[nodiscard]] bool loadIndexedPng(const std::string& filename, uint32_t img_width, uint32_t img_height, std::vector<uint8_t>& img_out_data, Palette<COLOR_COUNT>* pOutPalette) {
     // CRITICAL: Prevent LodePNG from auto-converting the output to RGBA.
     // Forcing PALETTE color type with 8-bit depth ensures 1 byte per pixel output.
-    
-    state.info_raw.bitdepth = 8;
-    state.decoder.color_convert = 0; // Do not convert indexed color to rgba
 
+    img_out_data.resize(img_width * img_height);
+    
     std::vector<unsigned char> imageFileBytes;
     unsigned int width = 0;
     unsigned int height = 0;
@@ -32,9 +29,40 @@ template <size_t COLOR_COUNT>
         return false;
     }
 
+    // Inspect the header without decompressing pixel data
+    lodepng::State state;
+    unsigned error = lodepng_inspect(&width, &height, &state, imageFileBytes.data(), imageFileBytes.size());
+    
+    if (error) {
+        std::cerr << "Error loadIndexedPng(): " << filename << " inspection error " << error << ": " << lodepng_error_text(error) << std::endl;
+        return false;
+    }
+
+    if(width != img_width || height != img_height) {
+        std::cerr << "Error loadIndexedPng(): Unexpected image " << filename << " size requested " << img_width << "x" << img_height << ". Actual image size is (" << width << "x" << height << ")" << std::endl;
+        return false;
+    }
+
+    return loadIndexedPng<COLOR_COUNT>(static_cast<const uint8_t*>(imageFileBytes.data()), imageFileBytes.size(), img_width, img_height, img_out_data, pOutPalette); 
+}
+
+template <size_t COLOR_COUNT>
+[[nodiscard]] bool loadIndexedPng(const uint8_t* pData, size_t data_size, uint32_t img_width, uint32_t img_height, std::vector<uint8_t>& img_out_data, Palette<COLOR_COUNT>* pOutPalette) {
+    if(pData == nullptr || data_size == 0) return false;
+    lodepng::State state;
+
+    // CRITICAL: Prevent LodePNG from auto-converting the output to RGBA.
+    // Forcing PALETTE color type with 8-bit depth ensures 1 byte per pixel output.
+    
+    state.info_raw.bitdepth = 8;
+    state.decoder.color_convert = 0; // Do not convert indexed color to rgba
+
+    unsigned int width = 0;
+    unsigned int height = 0;
+
     // Decode the file bytes into a temporary raw vector conforming to state.info_raw
     std::vector<unsigned char> decodedPixels;
-    unsigned int error = lodepng::decode(decodedPixels, width, height, state, imageFileBytes);
+    unsigned error = lodepng::decode(decodedPixels, width, height, state, reinterpret_cast<const unsigned char*>(pData), data_size);
     
     if (error) {
         std::cerr << "Error loadIndexedPng(): LodePNG decoder error " << error << ": " << lodepng_error_text(error) << "\n";
@@ -42,8 +70,8 @@ template <size_t COLOR_COUNT>
     }
 
     // Size validation check against known fixed bounds
-    if (width != img_width || height != img_height || decodedPixels.size() != (img_width * img_height)) {
-        std::cerr << "Error loadIndexedPng(): Actual image dimensions (" << width << "x" << height << ") do not match the expected image size (" << img_width << "x" << img_height << ").\n";
+    if(width != img_width || height != img_height) {
+        std::cerr << "Error loadIndexedPng(): Unexpected png image size requested " << img_width << "x" << img_height << ". Actual image size is (" << width << "x" << height << ")" << std::endl;
         return false;
     }
 
@@ -66,7 +94,8 @@ template <size_t COLOR_COUNT>
     return true;
 }
 
-template [[nodiscard]] bool loadIndexedPng<16>(const std::string& filename, uint16_t img_width, uint16_t img_height, std::vector<uint8_t>& img_out_data, Palette<16>* pOutPalette);
+template [[nodiscard]] bool loadIndexedPng<16>(const std::string& filename, uint32_t img_width, uint32_t img_height, std::vector<uint8_t>& img_out_data, Palette<16>* pOutPalette);
+template [[nodiscard]] bool loadIndexedPng<16>(const uint8_t* pData, size_t data_size, uint32_t img_width, uint32_t img_height, std::vector<uint8_t>& img_out_data, Palette<16>* pOutPalette);
 
 }  // namespace Utils
 }  // namespace PPU

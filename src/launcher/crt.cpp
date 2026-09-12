@@ -16,7 +16,7 @@ CRT::CRT(): Display(),
     mEncodedTextureHeight(0), 
     mInitialized(false) 
 {
-
+    mpOSD = std::make_unique<OSD>();
 }
 
 void CRT::setStandard(Standard standard) {
@@ -50,11 +50,11 @@ void CRT::prepareEncoderTexture(uint16_t core_tex_width, uint16_t core_tex_heigh
 
     switch(mMode) {
         case Mode::RF:
-            encoded_tex_width = mCoreTextureWidth * 4;
+            encoded_tex_width = mCoreTextureWidth * 3;
             encoded_tex_height = mCoreTextureHeight;
             break;
         case Mode::COMPOSITE:
-            encoded_tex_width = mCoreTextureWidth * 4;
+            encoded_tex_width = mCoreTextureWidth * 3;
             encoded_tex_height = mCoreTextureHeight;
             break;
         case Mode::COMPONENT:
@@ -67,6 +67,8 @@ void CRT::prepareEncoderTexture(uint16_t core_tex_width, uint16_t core_tex_heigh
             encoded_tex_height = mCoreTextureHeight * 2;
             break;
     }
+
+    mpOSD->resize(core_tex_width, encoded_tex_height);
 
     auto encoded_tex_format = (mMode == Mode::RF || mMode == Mode::COMPOSITE) ? GL_R16F : GL_RGB16F;
 
@@ -95,7 +97,7 @@ void CRT::prepareEncoderTexture(uint16_t core_tex_width, uint16_t core_tex_heigh
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     // Decoder rgb texture
-    mDecodedTextureWidth  = 1024;
+    mDecodedTextureWidth  = 720;
     mDecodedTextureHeight = encoded_tex_height;
 
     glDeleteTextures(1, &mDecodedTexture);
@@ -140,17 +142,51 @@ bool CRT::initImpl(uint16_t win_w, uint16_t win_h) {
     mWindowWidth = win_w;
     mWindowHeight = win_h;
 
-    mEncoderShader.init("shaders/quad_vs.glsl", "shaders/encoder_fs.glsl");
+    mpOSD->init(512, 288);
+
+    std::vector<OsdElement> osd_elements;
+
+    OsdElement elem1;
+
+    elem1.text = "OSD test. 123..9 !@#$%^&*()";
+    elem1.x = 0.0;
+    elem1.y = 0.0; 
+    elem1.duration = 1000;
+    elem1.maxDuration = 1000;
+    elem1.color[3] = 64;
+
+    OsdElement elem2;
+
+    elem2.text = "ZYX";
+    elem2.x = 256;
+    elem2.y = 144; 
+    elem2.duration = 1000;
+    elem2.maxDuration = 1000;
+
+    osd_elements.push_back(elem1);
+    osd_elements.push_back(elem2);
+
+    mpOSD->setText(osd_elements);
+
+    if(!mEncoderShader.init("shaders/quad.vs", "shaders/encoder.fs")) {
+        return false;
+    }
     mEncoderShader.linkShaderParameter("uConnType", reinterpret_cast<uint32_t&>(mMode), 0, (uint32_t)Mode::COUNT - 1);
     mEncoderShader.linkShaderParameter("uStandard", reinterpret_cast<uint32_t&>(mStandard), 0, (uint32_t)Standard::COUNT - 1);
 
-    mDecoderShader.init("shaders/quad_vs.glsl", "shaders/decoder_fs.glsl");
+    if(!mDecoderShader.init("shaders/quad.vs", "shaders/decoder.fs")) {
+        return false;
+    }
     mDecoderShader.linkShaderParameter("uConnType", reinterpret_cast<uint32_t&>(mMode), 0, (uint32_t)Mode::COUNT - 1);
     mDecoderShader.linkShaderParameter("uStandard", reinterpret_cast<uint32_t&>(mStandard), 0, (uint32_t)Standard::COUNT - 1);
     
-    mHistoryShader.init("shaders/quad_vs.glsl", "shaders/history_fs.glsl");
+    if(!mHistoryShader.init("shaders/quad.vs", "shaders/history.fs")) {
+        return false;
+    }
     
-    mDisplayShader.init("shaders/quad_vs.glsl", "shaders/display_fs.glsl");
+    if(!mDisplayShader.init("shaders/quad.vs", "shaders/display.fs")) {
+        return false;
+    }
 
     mEncoderShader.addDefine("TEST_RED", "1.0");
     mEncoderShader.addDefine("TEST_GREEN", "0.5");
@@ -187,6 +223,8 @@ bool CRT::initImpl(uint16_t win_w, uint16_t win_h) {
 
 void CRT::destroy() {
     if(!mInitialized) return;
+
+    if(mpOSD) mpOSD->destroy();
 
     glDeleteFramebuffers(1, &mEncoderFBO);
     glDeleteTextures(1, &mEncodedTexture);
@@ -229,6 +267,10 @@ bool CRT::processImpl(GLuint core_texture, uint16_t core_tex_width, uint16_t cor
     GLboolean currentDepthTestState = glIsEnabled(GL_DEPTH_TEST);
     glDisable(GL_DEPTH_TEST);
 
+    if(mpOSD) {
+        mpOSD->render();
+    }
+
     // ====================================// Encoder: Render Game Texture to the FBO Buffer// ==========================================
     glBindFramebuffer(GL_FRAMEBUFFER, mEncoderFBO);
     glViewport(0, 0, mEncodedTextureWidth, mEncodedTextureHeight);
@@ -237,9 +279,6 @@ bool CRT::processImpl(GLuint core_texture, uint16_t core_tex_width, uint16_t cor
     mEncoderShader.setInt("uSyncEnabled", 0);
     mEncoderShader.setFloat("uSyncLevel", 0.0);
     
-    //mEncoderShader.setInt("uStandard", (GLuint)mStandard);
-    //mEncoderShader.setInt("uConnType", (GLuint)mMode);
-    
     mEncoderShader.setBool("uScandouble", mMode == Mode::VGA ? 1 : 0);
     mEncoderShader.setFloat("uInW", (float)mCoreTextureWidth);
     mEncoderShader.setFloat("uInH", (float)mCoreTextureHeight);
@@ -247,9 +286,8 @@ bool CRT::processImpl(GLuint core_texture, uint16_t core_tex_width, uint16_t cor
     mEncoderShader.setFloat("uEncH", (float)mEncodedTextureHeight);
     mEncoderShader.setFloat("uOutW", (float)mEncodedTextureWidth);
     mEncoderShader.setFloat("uOutH", (float)mEncodedTextureHeight);
-
     mEncoderShader.pushTexture("uInputTex", core_texture, 0);
-
+    
     glBindVertexArray(mVAO); 
     glDrawArrays(GL_QUADS, 0, 4);
 
@@ -267,11 +305,7 @@ bool CRT::processImpl(GLuint core_texture, uint16_t core_tex_width, uint16_t cor
     mDecoderShader.setInt("uPALCombEnabled", 0);
     mDecoderShader.setInt("uPALCombEdgeProtect", 0);
     mDecoderShader.setInt("uSyncStripEnabled", 0);
-
     mDecoderShader.setFloat("uSyncLevel", 0.0);
-
-    //mDecoderShader.setInt("uStandard", (GLuint)mStandard);
-    //mDecoderShader.setInt("uConnType", (GLuint)mMode);
 
     mDecoderShader.setFloat("uInW", (float)mEncodedTextureWidth);
     mDecoderShader.setFloat("uInH", (float)mEncodedTextureHeight);
@@ -297,10 +331,10 @@ bool CRT::processImpl(GLuint core_texture, uint16_t core_tex_width, uint16_t cor
 
     if (mMode == Mode::VGA) { 
         // VGA fast phosphor decay profile
-        mHistoryShader.setVec3("uDecayCoefficients", 0.02f, 0.01f, 0.005f); // B22 Phosphor Decay Coefficients 
+//        mHistoryShader.setVec3("uDecayCoefficients", 0.02f, 0.01f, 0.005f); // B22 Phosphor Decay Coefficients 
     } else { 
         // Slow consumer television tube profile
-        mHistoryShader.setVec3("uDecayCoefficients", 0.15f, 0.07f, 0.03f); // P22 Phosphor Decay Coefficients 
+//        mHistoryShader.setVec3("uDecayCoefficients", 0.15f, 0.07f, 0.03f); // P22 Phosphor Decay Coefficients 
     }
 
     glBindVertexArray(mVAO); 
@@ -312,22 +346,22 @@ bool CRT::processImpl(GLuint core_texture, uint16_t core_tex_width, uint16_t cor
     mDisplayShader.use();
 
     mDisplayShader.setInt("uMode", (GLuint)mMode);
-    mDisplayShader.setVec2("uDecodedResolution", (float)mHistoryTextureWidth, (float)mHistoryTextureHeight);
+    mDisplayShader.setVec2("uVideoResolution", (float)mHistoryTextureWidth, (float)mHistoryTextureHeight);
+    mDisplayShader.setVec2("uOSDResolution", mpOSD->getWidth(), mpOSD->getHeight());
     mDisplayShader.setVec2("uOutResolution", (float)mWindowWidth, (float)mWindowHeight);
-    mDisplayShader.setFloat("uEdgeDefocus", 0.05);
-    mDecoderShader.setVec2("uMisconvergence", 1.1, 0.0);
-    mDisplayShader.setInt("uFrameCount", getFrameCount());
-    mDisplayShader.pushTexture("uDecodedTexture", mHistoryTexture[mHistoryWriteIndex], 0);
-    
+    mDisplayShader.setInt("uFrameCount", (uint32_t)getFrameCount());
+    mDisplayShader.setUint("uFrontendFrameCount", (uint32_t)getFrontendFrameCount());
+    mDisplayShader.pushTexture("uVideoTexture", mHistoryTexture[mHistoryReadIndex], 0);
+    mDisplayShader.pushTexture("uOSDTexture", mpOSD->getOSDTextureID(), 1);
+
     glBindVertexArray(mVAO); 
     glDrawArrays(GL_QUADS, 0, 4);
 
     glEnable(currentDepthTestState);
 
     mHistoryReadIndex = 1 - mHistoryReadIndex;
-    mHistoryWriteIndex = 1 - mHistoryWriteIndex;
+    mHistoryWriteIndex = 1 - mHistoryWriteIndex; 
 
-    //std::cout << mFrameCount << std::endl;
     return true;
 }
 
@@ -357,6 +391,8 @@ void CRT::drawGuiImpl() {
         }
         ImGui::PopID();
     }
+
+    mpOSD->drawGui();
 }
 
 std::string CRT::getStandardString() const {

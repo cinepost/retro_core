@@ -7,7 +7,7 @@
 #include <array>
 #include <string>
 #include <set>
-
+#include <type_traits>
 
 namespace RetroCore {
 namespace PPU {
@@ -15,14 +15,21 @@ namespace Utils {
 namespace MSX {
 
 /**
- * @brief Parses an indexed PNG file into PPU::MsxPPU_BASE::PATTERN_8D_8C structures.
+ * @brief Parses an indexed PNG file into PPU::MsxPPU_BASE::PATTERN_8D_8C or PPU::MsxPPU_BASE::PATTERN_8D structures.
  * @param filename PNG image file path.
  * @param pRefPalette Optional reference palette to ind exact or closest color in.
  * @param skip_empty_tiles Skip empty or totally filled tiles.
  * @return Vector filled with non-empty parsed elements.
  */
 
-[[nodiscard]] std::vector<PPU::MsxPPU_BASE::PATTERN_8D_8C> loadTilesFromIndexedPNG(const std::string& filename, const Palette<16>* pRefPalette, bool skip_empty_tiles) { 
+template<typename T>
+[[nodiscard]] std::vector<T> loadTilesFromIndexedPNG(const std::string& filename, const Palette<16>* pRefPalette, bool skip_empty_tiles) { 
+    using PATTERN_8D = PPU::MsxPPU_BASE::PATTERN_8D;
+    using PATTERN_32D = PPU::MsxPPU_BASE::PATTERN_32D;
+    using PATTERN_8D_8C = PPU::MsxPPU_BASE::PATTERN_8D_8C;
+
+    static_assert(std::is_same_v<T, PATTERN_8D_8C> || std::is_same_v<T, PATTERN_8D> || std::is_same_v<T, PATTERN_32D>);
+
     std::vector<unsigned char> imageFileBytes;
     unsigned int width = 0;
     unsigned int height = 0;
@@ -45,13 +52,21 @@ namespace MSX {
         return {};
     }
 
-    // Verify dimension properties perfectly align with uniform 8x8 squares
-    if (width % 8 != 0 || height % 8 != 0 || rawPixels.empty()) {
-        std::cerr << "Error: Image dimensions are not multiples of 8x8 pixels." << std::endl;
+    const uint32_t tile_width = std::is_same_v<T, PATTERN_32D> ? 16 : 8;
+    const uint32_t tile_height = std::is_same_v<T, PATTERN_32D> ? 16 : 8;
+
+    if(rawPixels.empty() || width == 0 || height == 0) {
+        std::cerr << "Error: Image has no data ! " << std::endl;
         return {};
     }
 
-    if(rawPixels.size() != (width*height)) {
+    // Verify dimension properties perfectly align with uniform 8x8 squares
+    if (width % tile_width != 0 || height % tile_height != 0) {
+        std::cerr << "Error: Image dimensions are not multiples of " << tile_width << "x" << tile_height<< " pixels." << std::endl;
+        return {};
+    }
+
+    if(rawPixels.size() != (width * height)) {
     	std::cerr << "Error: Not expected image raw pixels count ! " << rawPixels.size() << std::endl;
     	return {};
     }
@@ -73,13 +88,12 @@ namespace MSX {
         }
     }
 
-    std::vector<PPU::MsxPPU_BASE::PATTERN_8D_8C> outputTiles;
-    size_t tilesX = width / 8;
-    size_t tilesY = height / 8;
+    std::vector<T> outputTiles;
+    const size_t tilesX = width / tile_width;
+    const size_t tilesY = height / tile_height;
 
     for (size_t ty = 0; ty < tilesY; ++ty) {
         for (size_t tx = 0; tx < tilesX; ++tx) {
-            
             // Phase 1: Localize the 8x8 palette index data block
             std::array<std::array<uint8_t, 8>, 8> localBlock{};
             uint8_t globalFirstPixel = rawPixels[(ty * 8 * width) + (tx * 8)];
@@ -110,7 +124,7 @@ namespace MSX {
                 continue; 
             }
 
-            PPU::MsxPPU_BASE::PATTERN_8D_8C currentTile;
+            T currentTile;
 
             bool totalTileIsZeroes = true;
             bool totalTileIsOnes = true;
@@ -146,11 +160,6 @@ namespace MSX {
                     } else {
                         assert(false && "not implemented");
                     }
-
-                    // Assign pixel state to 1 if it matches the secondary row color
-                    //if (currentPixel == secondaryColorInRow && currentPixel != firstColorInRow) {
-                    //    tileRowByte |= (1 << (7 - x)); // MSB layout mapping
-                    //}
                 }
 
                 // Check uniform content parameters
@@ -160,10 +169,12 @@ namespace MSX {
                 currentTile.tile[y] = tileRowByte;
                 
                 // Store low nibble (Color 0) and high nibble (Color 1) in 4-bit layouts
-                if(pRefPalette) {
-                    currentTile.color[y] = (firstColorInRow & 0x0F) | ((secondaryColorInRow & 0x0F) << 4);
-                } else {
-                    currentTile.color[y] = 0xF0;
+                if constexpr(std::is_same_v<T, PPU::MsxPPU_BASE::PATTERN_8D_8C>) {
+                    if(pRefPalette) {
+                        currentTile.color[y] = (firstColorInRow & 0x0F) | ((secondaryColorInRow & 0x0F) << 4);
+                    } else {
+                        currentTile.color[y] = 0xF0;
+                    }
                 }
             }
 
@@ -183,3 +194,7 @@ namespace MSX {
 }  // namespace Utils
 }  // namespace PPU
 }  // namespace RetroCore
+
+template std::vector<RetroCore::PPU::MsxPPU_BASE::PATTERN_8D> RetroCore::PPU::Utils::MSX::loadTilesFromIndexedPNG(const std::string&, const RetroCore::Palette<16>*, bool);
+template std::vector<RetroCore::PPU::MsxPPU_BASE::PATTERN_32D> RetroCore::PPU::Utils::MSX::loadTilesFromIndexedPNG(const std::string&, const RetroCore::Palette<16>*, bool);
+template std::vector<RetroCore::PPU::MsxPPU_BASE::PATTERN_8D_8C> RetroCore::PPU::Utils::MSX::loadTilesFromIndexedPNG(const std::string&, const RetroCore::Palette<16>*, bool);

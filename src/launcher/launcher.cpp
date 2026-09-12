@@ -13,6 +13,9 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <thread>
+#include <mutex>
+#include <atomic>
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -31,8 +34,10 @@
     #define DLERROR()             dlerror()
 #endif
 
+#include "settings.h"
 #include "crt.h"
 
+RuntimeSettings g_settings;
 
 // 1. The Frontend Logger function
 void cb_log_printf(enum retro_log_level level, const char *fmt, ...) {
@@ -159,24 +164,34 @@ std::vector<char> g_rom_data_buffer;
 SDL_GameController* g_gamepad = nullptr;
 
 // --- Global Hardware States ---
-bool        g_paused = false;
 bool        g_maintain_core_fps = true;
 bool        g_use_shaders = true; // Default
 GLuint      g_core_texture = 0;
-unsigned    g_core_tex_width = 0;
-unsigned    g_core_tex_height = 0;
 unsigned    g_pixel_format = RETRO_PIXEL_FORMAT_RGB565; // Default fallback layout
 bool        g_core_supports_no_game = true; // Default
 
 
 RetroLauncher::CRT g_crt;
 
+// Structure to safely pass frame data from Core thread to Render thread
+struct VideoBuffer {
+    std::mutex mutex;
+    std::vector<uint32_t> pixels; // Double buffer storage
+    int width = 0;
+    int height = 0;
+    size_t pitch = 0;
+    bool is_dirty = false;        // True when a brand new frame has arrived
+} g_video_buffer;
+
+std::atomic<bool> g_core_running{false};
+std::atomic<bool> g_core_paused{false};
+
+std::thread g_core_thread;
 
 // --- Global Audio Tracking ---
 SDL_AudioDeviceID g_audio_device = 0;
 
 // --- Global Volume Modifiers ---
-float g_audio_volume = 0.5f;      // Default volume set to 40%
 const float VOLUME_STEP = 0.05f;  // Increase/decrease by 5% increments
 
 // --- Volume HUD Display States ---
@@ -258,7 +273,6 @@ const uint8_t GL_HUD_FONT[41][8] = {
 
 
 // --- FPS Tracking States ---
-bool g_hud_visible = true; // Set to true by default
 uint32_t g_hud_frame_count = 0;
 uint64_t g_hud_last_time = 0;
 float g_hud_current_fps = 0.0f;
@@ -315,6 +329,17 @@ int get_font_index(char c) {
     }
 }
 
+
+std::string getVolumeBarString(float audio_volume, int vol_string_len) {
+    if(audio_volume < 0.01) return "MUTED";
+    if(vol_string_len < 2) return "VOLUME []";
+    audio_volume = std::max(0.0f, std::min(1.0f, audio_volume));
+
+    int inner_len = vol_string_len - 2;
+    int filled_bars = static_cast<int>(audio_volume * inner_len);
+    int empty_bars = inner_len - filled_bars;
+    return "VOLUME [" + std::string(filled_bars, '|') + std::string(empty_bars, '-') + "]";
+}
 
 // Draws a raw monochrome bit-mapped pixel character string onto the display
 void draw_hud_string(float start_x, float start_y, const char* text, float scale) {
@@ -418,41 +443,19 @@ bool cb_environment(unsigned cmd, void *data) {
 void cb_video_refresh(const void *data, unsigned width, unsigned height, size_t pitch) {
     if (!data) return;
     
-    glBindTexture(GL_TEXTURE_2D, g_core_texture);
-    g_core_tex_width = width;
-    g_core_tex_height = height;
+    std::lock_guard<std::mutex> lock(g_video_buffer.mutex);
+    g_video_buffer.width = width;
+    g_video_buffer.height = height;
+    g_video_buffer.pitch = pitch;
 
-    GLint internal_format = GL_RGB;
-    GLenum gl_type = GL_UNSIGNED_SHORT_5_6_5;
-    GLenum gl_format = GL_RGB;
-    size_t pixel_bytes = 2;
-
-    // Dynamically query environmental layout agreements
-    switch (g_pixel_format) {
-        case RETRO_PIXEL_FORMAT_XRGB8888:
-            internal_format = GL_RGB;
-            gl_type = GL_UNSIGNED_BYTE;
-            gl_format = GL_BGRA; // Matches 32-bit hardware layout order maps
-            pixel_bytes = 4;
-            break;
-        case RETRO_PIXEL_FORMAT_0RGB1555:
-            internal_format = GL_RGB;
-            gl_type = GL_UNSIGNED_SHORT_1_5_5_5_REV;
-            gl_format = GL_BGRA;
-            pixel_bytes = 2;
-            break;
-        case RETRO_PIXEL_FORMAT_RGB565:
-        default:
-            internal_format = GL_RGB;
-            gl_type = GL_UNSIGNED_SHORT_5_6_5;
-            gl_format = GL_RGB;
-            pixel_bytes = 2;
-            break;
+    // Resize vector if frame size changes (e.g., SNES hires mode changes)
+    size_t total_bytes = height * pitch;
+    if (g_video_buffer.pixels.size() < total_bytes / 4) {
+        g_video_buffer.pixels.resize(total_bytes / 4);
     }
 
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, pitch / pixel_bytes);
-    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, gl_format, gl_type, data);
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    std::memcpy(g_video_buffer.pixels.data(), data, total_bytes);
+    g_video_buffer.is_dirty = true; // Signal main thread that a new frame is ready
 }
 
 // --- Core Audio Callbacks ---
@@ -530,10 +533,10 @@ size_t cb_audio_batch_cb(const int16_t *data, size_t frames) {
     }
 
     // --- 4b. MULTIPLY SAMPLES BY GLOBAL VOLUME COEFFICIENT ---
-    if (g_audio_volume != 1.0f) {
+    if (g_settings.audio_volume != 1.0f) {
         for (size_t i = 0; i < output_buffer.size(); ++i) {
             // Apply volume scale factor as higher precision float math
-            float scaled_sample = (float)output_buffer[i] * g_audio_volume;
+            float scaled_sample = (float)output_buffer[i] * g_settings.audio_volume;
 
             // Strict hardware boundaries clamping to prevent audio wrapping distortion
             if (scaled_sample > 32767.0f)  scaled_sample = 32767.0f;
@@ -647,7 +650,48 @@ void close_gamepad_subsystem() {
     }
 }
 
+retro_run_t global_retro_run = nullptr; 
+
+void core_thread_loop() {
+    // Precise timing setup for target FPS (e.g., 60 FPS = 16.666ms per frame)
+    const uint64_t target_frame_time_ns = static_cast<uint64_t>(1'000'000'000.0 / g_target_fps);
+    
+    auto last_time = std::chrono::high_resolution_clock::now();
+
+    while (g_core_running) {
+        if (g_core_paused) {
+            // Sleep for a short duration (e.g., 10ms) so the thread idle-loops 
+            // without consuming 100% of a CPU core.
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            
+            // Reset the timing clock so that when we unpause, the core doesn't 
+            // experience a massive delta-time jump and try to fast-forward.
+            last_time = std::chrono::high_resolution_clock::now();
+            continue; 
+        }
+
+        // 1. Process Emulation Step
+        global_retro_run(); // This fires cb_video_refresh internally
+
+        // 2. Core Throttling 
+        // Note: If you implement blocking audio sync (e.g., SDL_QueueAudio blocking),
+        // the audio system will naturally throttle this loop, and you can skip this timer.
+        auto current_time = std::chrono::high_resolution_clock::now();
+        auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(current_time - last_time).count();
+        
+        if (elapsed_ns < target_frame_time_ns) {
+            uint64_t sleep_ns = target_frame_time_ns - elapsed_ns;
+            std::this_thread::sleep_for(std::chrono::nanoseconds(sleep_ns));
+        }
+        last_time = std::chrono::high_resolution_clock::now();
+    }
+}
+
+RetroLauncher::OSD* g_osd_ptr = nullptr;
+
 int main(int argc, char *argv[]) {
+    loadINI(g_settings);
+
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <path_to_core.so> (<optional_path_to_rom>)" << std::endl;
         return 1;
@@ -677,7 +721,14 @@ int main(int argc, char *argv[]) {
     auto retro_set_input_state = (retro_set_input_state_t)DLSYM(core_handle, "retro_set_input_state");
     auto retro_load_game = (retro_load_game_t)DLSYM(core_handle, "retro_load_game");
     auto retro_unload_game = (retro_unload_game_t)DLSYM(core_handle, "retro_unload_game");
-    auto retro_run = (retro_run_t)DLSYM(core_handle, "retro_run");
+    
+    //auto retro_run = (retro_run_t)DLSYM(core_handle, "retro_run");
+    global_retro_run = (retro_run_t)DLSYM(core_handle, "retro_run");
+
+     if (!global_retro_run) {
+        std::cerr << "Failed to find retro_run symbol!" << std::endl;
+        return -1;
+    }
 
     if (retro_api_version() != RETRO_API_VERSION) {
         std::cerr << "Libretro API version mismatch!" << std::endl;
@@ -791,7 +842,7 @@ int main(int argc, char *argv[]) {
     );
 
     SDL_GLContext gl_context = SDL_GL_CreateContext(window);
-    SDL_GL_SetSwapInterval(0); // Enable(1) / Disable(0) VSync
+    SDL_GL_SetSwapInterval(1); // Enable(1) / Disable(0) VSync
     SDL_GetWindowSize(window, &win_w, &win_h);
 
 
@@ -829,28 +880,48 @@ int main(int argc, char *argv[]) {
         SDL_PauseAudioDevice(g_audio_device, 0); // Unpause hardware stream loop
     }
 
-    // 4. Setup OpenGL Texture
-    glGenTextures(1, &g_core_texture);
-    glBindTexture(GL_TEXTURE_2D, g_core_texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    // --- Boot and Configure Modern Pipeline Crt Shaders Processor ---
-    g_crt.init(win_w, win_h);
-
     // Active gamepad device tracking query
     if (SDL_NumJoysticks() > 0 && SDL_IsGameController(0)) {
         g_gamepad = SDL_GameControllerOpen(0);
     }
 
+    // 4. Setup OpenGL Texture
+    glGenTextures(1, &g_core_texture);
+    glBindTexture(GL_TEXTURE_2D, g_core_texture);
+
+    // Pre-allocate a large chunk of GPU memory (e.g., 1024x1024 or 2048x2048 max possible core size)
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1024, 1024, 0, GL_BGRA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    // --- Boot and Configure Modern Pipeline Crt Shaders Processor ---
+    if(!g_crt.init(win_w, win_h)) {
+        std::cerr << "[Launcher] Error initializing " << g_crt.getDisplayName() << " display !" << std::endl;
+        return 1;
+    }
+
+    g_osd_ptr = g_crt.getOSD();
+
+
+    // Start Core Thread
+    g_core_running = true;
+    g_core_thread = std::thread(core_thread_loop);
+
+    std::vector<uint32_t> render_pixels;
+    int tex_w = 0, tex_h = 0;
+    size_t tex_pitch = 0;
+
+
     // 5. Main Execution Loop
     bool running = true;
-    SDL_Event event;
+
+    size_t frontend_frame_count = 0;
 
     while (running) {
         // Explicitly processes the operating system's message queue and updates keyboard arrays
         SDL_PumpEvents();
 
+        SDL_Event event;
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL2_ProcessEvent(&event);
 
@@ -865,13 +936,15 @@ int main(int argc, char *argv[]) {
             if (event.type == SDL_KEYDOWN) {
                 switch (event.key.keysym.sym) {
                     case SDLK_F3:
-                        g_hud_visible = !g_hud_visible;
+                        g_settings.show_fps = !g_settings.show_fps;
                         break;
+                    case SDLK_F11:
+                        g_settings.imgui_hud_show = !g_settings.imgui_hud_show;
                     case SDLK_F4:
                         g_maintain_core_fps = !g_maintain_core_fps;
                         break;
                     case SDLK_p:
-                        g_paused = !g_paused;
+                        g_core_paused = !g_core_paused;
                         break;
                     case SDLK_s: 
                         g_use_shaders = !g_use_shaders;
@@ -892,13 +965,13 @@ int main(int argc, char *argv[]) {
                         break;
                     case SDLK_MINUS:
                     case SDLK_KP_MINUS:
-                        g_audio_volume = std::max(0.0f, g_audio_volume - VOLUME_STEP);
+                        g_settings.audio_volume = std::max(0.0f, g_settings.audio_volume - VOLUME_STEP);
                         volume_changed = true;
                         break;
                     case SDLK_EQUALS:
                     case SDLK_PLUS:
                     case SDLK_KP_PLUS:
-                        g_audio_volume = std::min(2.0f, g_audio_volume + VOLUME_STEP); // Boost up to 200%
+                        g_settings.audio_volume = std::min(2.0f, g_settings.audio_volume + VOLUME_STEP); // Boost up to 200%
                         volume_changed = true;
                         break;
 
@@ -921,7 +994,7 @@ int main(int argc, char *argv[]) {
             // Volume Hotkey Processing Logic (+ and -)
             if (volume_changed) {
                 // Compile current gain status to text array
-                snprintf(g_vol_hud_string, sizeof(g_vol_hud_string), "VOL: %d%%", (int)(g_audio_volume * 100.0f));
+                snprintf(g_vol_hud_string, sizeof(g_vol_hud_string), "VOL: %d%%", (int)(g_settings.audio_volume * 100.0f));
                 
                 // Set visible duration frame to 2000ms from right now
                 g_vol_hud_timeout_ms = SDL_GetTicks() + 2000;
@@ -950,62 +1023,94 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // --- HIGH PRECISION FRAMERATE TIMING STEP ---
-        uint64_t current_time = SDL_GetPerformanceCounter();
-
-        // Check if we are running ahead of the core's native target timeline
-        if (current_time < g_next_frame_time && g_maintain_core_fps) {
-            uint64_t ticks_to_wait = g_next_frame_time - current_time;
-            double ms_to_wait = ((double)ticks_to_wait * 1000.0) / (double)SDL_GetPerformanceFrequency();
-
-            // 1. Coarse Sleep: If we have plenty of time (more than 2ms), yield to the OS
-            if (ms_to_wait > 2.0) {
-                SDL_Delay((Uint32)(ms_to_wait - 1.5)); 
-            }
-
-            // 2. Fine-Grained Busy Wait: Burn remaining sub-millisecond cycles until the target tick hits
-            while (SDL_GetPerformanceCounter() < g_next_frame_time) {
-                #if defined(_MSC_VER) || defined(__MINGW32__)
-                    _mm_pause(); // Intrinsic hint optimizing CPU power usage during spinlocks
-                #elif defined(__i386__) || defined(__x86_64__)
-                    __builtin_ia32_pause();
-                #endif
+        // 1. Thread Synchronization Check
+        size_t tex_pitch = 0;
+        bool upload_new_frame = false;
+        {
+            std::lock_guard<std::mutex> lock(g_video_buffer.mutex);
+            if (g_video_buffer.is_dirty) {
+                // Quickly swap or copy data into render-thread local space 
+                // to minimize mutex holding time.
+                render_pixels = g_video_buffer.pixels;
+                tex_w = g_video_buffer.width;
+                tex_h = g_video_buffer.height;
+                tex_pitch = g_video_buffer.pitch;
+                
+                g_video_buffer.is_dirty = false; // Reset flag
+                upload_new_frame = true;
             }
         }
 
-        // Accumulate target step forward for the next iteration frame point
-        g_next_frame_time += g_frame_duration_counts;
+        glBindTexture(GL_TEXTURE_2D, g_core_texture);
+        if (upload_new_frame) {
 
-        // Hard catch-up guard: If the emulator dips or hitches significantly,
-        // reset our anchor to the current clock time to prevent rapid frame-skipping cycles
-        if (SDL_GetPerformanceCounter() > g_next_frame_time + (g_frame_duration_counts * 2)) {
-            g_next_frame_time = SDL_GetPerformanceCounter() + g_frame_duration_counts;
+            GLint internal_format = GL_RGB;
+            GLenum gl_type = GL_UNSIGNED_SHORT_5_6_5;
+            GLenum gl_format = GL_RGB;
+            size_t pixel_bytes = 2;
+
+            // Dynamically query environmental layout agreements
+            switch (g_pixel_format) {
+                case RETRO_PIXEL_FORMAT_XRGB8888:
+                    internal_format = GL_RGB;
+                    gl_type = GL_UNSIGNED_BYTE;
+                    gl_format = GL_BGRA; // Matches 32-bit hardware layout order maps
+                    pixel_bytes = 4;
+                    break;
+                case RETRO_PIXEL_FORMAT_0RGB1555:
+                    internal_format = GL_RGB;
+                    gl_type = GL_UNSIGNED_SHORT_1_5_5_5_REV;
+                    gl_format = GL_BGRA;
+                    pixel_bytes = 2;
+                    break;
+                case RETRO_PIXEL_FORMAT_RGB565:
+                default:
+                    internal_format = GL_RGB;
+                    gl_type = GL_UNSIGNED_SHORT_5_6_5;
+                    gl_format = GL_RGB;
+                    pixel_bytes = 2;
+                    break;
+            }
+
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, tex_pitch / pixel_bytes);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 
+                0, 0,                // Offset X, Y
+                tex_w, tex_h,        // Width and Height of the incoming core frame
+                GL_BGRA, GL_UNSIGNED_BYTE, 
+                render_pixels.data());
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
         }
-
-        // Run one frame of emulation
-        if(!g_paused)retro_run();
-
+        
+        g_crt.setFrontendFrameCount(frontend_frame_count);
         bool legacy_render = !g_use_shaders;
         if(g_use_shaders) {
-            legacy_render = !g_crt.process(g_core_texture, g_core_tex_width, g_core_tex_height);
+            legacy_render = !g_crt.process(g_core_texture, tex_w, tex_h);
         } 
 
+        glViewport(0, 0, win_w, win_h);
         if(legacy_render){
             // Render the frame onto screen via OpenGL
-            if (g_core_tex_width > 0 && g_core_tex_height > 0) {
+            if (tex_w > 0 && tex_h > 0) {
                 glEnable(GL_TEXTURE_2D);
-                glBindTexture(GL_TEXTURE_2D, g_core_texture);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
+                //glViewport(0, 0, win_w, win_h);
+
+                float max_u = static_cast<float>(tex_w) / 1024.0f;
+                float max_v = static_cast<float>(tex_h) / 1024.0f;
+
                 glBegin(GL_QUADS);
-                    glTexCoord2f(0.0f, 1.0f); glVertex2f(-1.0f, -1.0f);
-                    glTexCoord2f(1.0f, 1.0f); glVertex2f( 1.0f, -1.0f);
-                    glTexCoord2f(1.0f, 0.0f); glVertex2f( 1.0f,  1.0f);
-                    glTexCoord2f(0.0f, 0.0f); glVertex2f(-1.0f,  1.0f);
+                    glTexCoord2f(0.0f,   0.0f); glVertex2f(-1.0f,  1.0f);
+                    glTexCoord2f(0.0f,  max_v); glVertex2f(-1.0f, -1.0f);
+                    glTexCoord2f(max_u, max_v); glVertex2f( 1.0f, -1.0f);
+                    glTexCoord2f(max_u,  0.0f); glVertex2f( 1.0f,  1.0f);
                 glEnd();
+                glDisable(GL_TEXTURE_2D); // Crucial: Disable texturing so shapes render as flat colors
+    
             }
         }
+        glBindTexture(GL_TEXTURE_2D, 0);
 
         // RENDER HUD OVERLAY (IF ENABLED)
 
@@ -1015,7 +1120,7 @@ int main(int argc, char *argv[]) {
         uint64_t hud_elapsed_ticks = hud_now - g_hud_last_time;
         double hud_elapsed_sec = (double)hud_elapsed_ticks / (double)SDL_GetPerformanceFrequency();
 
-        if (g_hud_visible) {
+        if (g_settings.show_fps) {
             // Recalculate and update the text string once every 0.5 seconds to keep it readable
             if (hud_elapsed_sec >= 0.5) {
                 g_hud_current_fps = (float)((double)g_hud_frame_count / hud_elapsed_sec);
@@ -1047,21 +1152,27 @@ int main(int argc, char *argv[]) {
             // Check if our time allocation window has elapsed
             if (SDL_GetTicks() > g_vol_hud_timeout_ms) {
                 g_vol_hud_active = false; // Gracefully shut off drawing pass
+                if(g_osd_ptr) g_osd_ptr->clear();
             } else {
                 float vol_x = 0.65f;  // Placed on the top right quadrant
                 float vol_y = 0.90f;
                 float scale = 0.004f;
 
-                // Draw Drop Shadow (Flat Black offset background)
-                glColor3f(0.0f, 0.0f, 0.0f);
-                draw_hud_string(vol_x + 0.002f, vol_y - 0.002f, g_vol_hud_string, scale);
+                if(g_osd_ptr) {
+                    int v_pos = g_osd_ptr->getHeight() - 28;
+                    g_osd_ptr->setText(10, v_pos, getVolumeBarString(g_settings.audio_volume, 20), 0, 255, 0);
+                } else {
+                    // Draw Drop Shadow (Flat Black offset background)
+                    glColor3f(0.0f, 0.0f, 0.0f);
+                    draw_hud_string(vol_x + 0.002f, vol_y - 0.002f, g_vol_hud_string, scale);
 
-                // Draw Primary Text (High-contrast Cyan/Light Blue text)
-                glColor3f(0.0f, 1.0f, 1.0f);
-                draw_hud_string(vol_x, vol_y, g_vol_hud_string, scale);
+                    // Draw Primary Text (High-contrast Cyan/Light Blue text)
+                    glColor3f(0.0f, 1.0f, 1.0f);
+                    draw_hud_string(vol_x, vol_y, g_vol_hud_string, scale);
 
-                // Reset color to default solid white so it doesn't tint the game frame
-                glColor3f(1.0f, 1.0f, 1.0f);
+                    // Reset color to default solid white so it doesn't tint the game frame
+                    glColor3f(1.0f, 1.0f, 1.0f);
+                }
             }
         }
 
@@ -1070,52 +1181,69 @@ int main(int argc, char *argv[]) {
             // Check if our time allocation window has elapsed
             if (SDL_GetTicks() > g_video_mode_hud_timeout_ms) {
                 g_video_mode_hud_active = false; // Gracefully shut off drawing pass
+                if(g_osd_ptr) g_osd_ptr->clear();
             } else {
                 float vol_x = 0.475f;
                 float vol_y = 0.80f;
                 float scale = 0.004f;
 
-                // Draw Drop Shadow (Flat Black offset background)
-                glColor3f(0.0f, 0.0f, 0.0f);
-                draw_hud_string(vol_x + 0.002f, vol_y - 0.002f, g_video_mode_hud_string, scale);
+                if(g_osd_ptr) {
+                    g_osd_ptr->setText(10, 10, g_video_mode_hud_string, 0, 255, 0, 255);
+                } else {
 
-                // Draw Primary Text (High-contrast Cyan/Light Blue text)
-                glColor3f(0.0f, 1.0f, 1.0f);
-                draw_hud_string(vol_x, vol_y, g_video_mode_hud_string, scale);
+                    // Draw Drop Shadow (Flat Black offset background)
+                    glColor3f(0.0f, 0.0f, 0.0f);
+                    draw_hud_string(vol_x + 0.002f, vol_y - 0.002f, g_video_mode_hud_string, scale);
 
-                // Reset color to default solid white so it doesn't tint the game frame
-                glColor3f(1.0f, 1.0f, 1.0f);
+                    // Draw Primary Text (High-contrast Cyan/Light Blue text)
+                    glColor3f(0.0f, 1.0f, 1.0f);
+                    draw_hud_string(vol_x, vol_y, g_video_mode_hud_string, scale);
+
+                    // Reset color to default solid white so it doesn't tint the game frame
+                    glColor3f(1.0f, 1.0f, 1.0f);
+                }
             }
         }
 
         // ImGui
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame(); 
-        
-        // test
-        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Appearing);
-        ImGui::SetNextWindowSizeConstraints(ImVec2(400.0f, 200.0f), ImVec2(FLT_MAX, FLT_MAX));
+        if(g_settings.imgui_hud_show) {
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplSDL2_NewFrame();
+            ImGui::NewFrame(); 
+            
+            // test
+            ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Appearing);
+            ImGui::SetNextWindowSizeConstraints(ImVec2(400.0f, 200.0f), ImVec2(FLT_MAX, FLT_MAX));
 
-        
-        // Open a named window context so window is never NULL
-        ImGui::Begin("Frontend Dashboard", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        
-        ImGui::Text("System Perf: %.1f FPS", g_hud_current_fps);
-        ImGui::SliderFloat("Audio Gain", &g_audio_volume, 0.0f, 2.0f, "%.2f");
+            
+            // Open a named window context so window is never NULL
+            ImGui::Begin("Frontend Dashboard", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+            
+            ImGui::Text("System Perf: %.1f FPS", g_hud_current_fps);
+            ImGui::SliderFloat("Audio Gain", &g_settings.audio_volume, 0.0f, 2.0f, "%.2f");
 
-        g_crt.drawUI();
-        
-        ImGui::End(); // <-- Safely closes the named window context
+            if(g_use_shaders){
+                g_crt.drawUI();
+            }
+
+            ImGui::End(); // <-- Safely closes the named window context
 
 
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        }
 
         SDL_GL_SwapWindow(window);
+        frontend_frame_count++;
     }
 
     // 6. Cleanup & Shutdown
+    g_core_running = false;
+    if (g_core_thread.joinable()) {
+        g_core_thread.join();
+    }
+
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
@@ -1135,5 +1263,6 @@ int main(int argc, char *argv[]) {
     SDL_DestroyWindow(window);
     SDL_Quit();
 
+    saveINI(g_settings);
     return 0;
 }

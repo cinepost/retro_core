@@ -18,7 +18,8 @@ namespace MSX {
         std::array<uint8_t, 8>{_HV(c0), _HV(c1), _HV(c2), _HV(c3), _HV(c4), _HV(c5), _HV(c6), _HV(c7)}  \
     )
 
-[[nodiscard]] std::vector<PPU::MsxPPU_BASE::PATTERN_8D_8C> loadTilesFromIndexedPNG(const std::string& filename, const Palette<16>* pRefPalette = nullptr, bool skip_empty_tiles = true);
+template<typename T>
+[[nodiscard]] std::vector<T> loadTilesFromIndexedPNG(const std::string& filename, const Palette<16>* pRefPalette = nullptr, bool skip_empty_tiles = true);
 
 }  // namespace MSX
 }  // namespace Utils

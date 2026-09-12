@@ -14,80 +14,25 @@
 #include <unordered_map>
 #include <cstring>
 
+#include "shaderparam.h"
 
 namespace fs = std::filesystem;
 
 namespace RetroLauncher {
 
-class ShaderParameter {
-    public:
-        ShaderParameter(): mpLinkedData(nullptr), mLinkedElementCount(0), mLinked(false), mType(ParamType::Unknown) {
-
-        }
-
-        enum class ParamType {
-            Float, Vec2,  Vec3,  Vec4,
-            Int,   Int2,  Int3,  Int4,
-            Uint,  Uint2, Uint3, Uint4,
-            Unknown
-        };
-
-    public:
-        void resetToDefault() {
-            if(!mLinked || !mpLinkedData) return;
-
-            std::memcpy(mValue, mDefaultValue, sizeof(mDefaultValue));
-        }
-
-        bool isLinked() const { return mLinked; }
-        void toggleLinkState() { mLinked = !mLinked; }
-
-        const void* getValuePtr() const {
-            if(!mLinked || !mpLinkedData) {
-                return &mValue;
-            } else {
-                assert(mLinkedElementCount > 0);
-                return mpLinkedData;
-            }
-        }
-
-        void fillActiveValues(float* outBuffer) const {
-            if (mpLinkedData != nullptr) {
-                // Direct memory copy bypasses all allocations and functions!
-                int elementsToCopy = std::min(4, mLinkedElementCount);
-                std::memcpy(outBuffer, mpLinkedData, elementsToCopy * sizeof(float));
-            } else {
-                std::memcpy(outBuffer, mValue, sizeof(mValue));
-            }
-        }
-
-    private:
-        const void* mpLinkedData = nullptr;
-        int mLinkedElementCount = 0;
-        bool mLinked; // If true parameter gets value through mpLinkedData (if set)
-
-        std::string mIdentifier;  // GLSL uniform name
-        std::string mLabel;       // ImGui title
-        ParamType   mType;        // Data type enum
-
-        // Arrays representing up to 4 channels (XYZW) for vectors or single values at index 0
-        float mDefaultValue[4]  = {0.0f, 0.0f, 0.0f, 0.0f};
-        float mValue[4]         = {0.0f, 0.0f, 0.0f, 0.0f};
-        float mMin[4]           = {0.0f, 0.0f, 0.0f, 0.0f};
-        float mMax[4]           = {0.0f, 0.0f, 0.0f, 0.0f};
-
-        friend class Shader;
-};
 
 class Shader {
     public:
+        using ParamType = ShaderParameter::ParamType;
         using DefinesList = std::unordered_map<std::string, std::string>;
 
         Shader(const std::string& name);
         Shader(const std::string& name, const std::string& vertPath, const std::string& fragPath);
+        Shader(const std::string& name, const std::string& vertPath, const std::string& fragPath, const std::string& geomPath);
         ~Shader();
 
         bool init(const std::string& vertPath, const std::string& fragPath);
+        bool init(const std::string& vertPath, const std::string& fragPath, const std::string& geomPath);
         bool checkAndReload(bool force = false);
         void destroy();
         void drawUI();
@@ -168,49 +113,49 @@ class Shader {
             glUniform1i(location, static_cast<int>(value));
         }
 
-        void setInt(const std::string& name, int value) const {
+        void setInt(const std::string& name, int32_t value) const {
             GLint location = getUniformLocation(name);
             if(location == -1) return;
             glUniform1i(location, value);
         }
 
-        void setInt2(const std::string& name, int x, int y) const {
+        void setInt2(const std::string& name, int32_t x, int32_t y) const {
             GLint location = getUniformLocation(name);
             if(location == -1) return;
             glUniform2i(location, x, y);
         }
 
-        void setInt3(const std::string& name, int x, int y, int z) const {
+        void setInt3(const std::string& name, int32_t x, int32_t y, int32_t z) const {
             GLint location = getUniformLocation(name);
             if(location == -1) return;
             glUniform3i(location, x, y, z);
         }
 
-        void setInt4(const std::string& name, int x, int y, int z, int w) const {
+        void setInt4(const std::string& name, int32_t x, int32_t y, int32_t z, int32_t w) const {
             GLint location = getUniformLocation(name);
             if(location == -1) return;
             glUniform4i(location, x, y, z, w);
         }
         
-        void setUint(const std::string& name, unsigned value) const {
+        void setUint(const std::string& name, uint32_t value) const {
             GLint location = getUniformLocation(name);
             if(location == -1) return;
             glUniform1ui(location, value);
         }
 
-        void setUint2(const std::string& name, unsigned x, unsigned y) const {
+        void setUint2(const std::string& name, uint32_t x, uint32_t y) const {
             GLint location = getUniformLocation(name);
             if(location == -1) return;
             glUniform2ui(location, x, y);
         }
 
-        void setUint3(const std::string& name, unsigned x, unsigned y, unsigned z) const {
+        void setUint3(const std::string& name, uint32_t x, uint32_t y, uint32_t z) const {
             GLint location = getUniformLocation(name);
             if(location == -1) return;
             glUniform3ui(location, x, y, z);
         }
 
-        void setUint4(const std::string& name, unsigned x, unsigned y, unsigned z, unsigned w) const {
+        void setUint4(const std::string& name, uint32_t x, uint32_t y, uint32_t z, uint32_t w) const {
             GLint location = getUniformLocation(name);
             if(location == -1) return;
             glUniform4ui(location, x, y, z, w);
@@ -283,9 +228,11 @@ class Shader {
         std::string mName;
         std::string mVertSourcePath;
         std::string mFragSourcePath;
+        std::string mGeomSourcePath;
 
         mutable fs::file_time_type mLastVertShaderSourceWriteTime;
         mutable fs::file_time_type mLastFragShaderSourceWriteTime;
+        mutable fs::file_time_type mLastGeomShaderSourceWriteTime;
 
         mutable std::chrono::steady_clock::time_point mLastCheckTime;
 

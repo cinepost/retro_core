@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <filesystem>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -23,5 +24,8 @@ fs::path getExecutableDir();
 
 // Reads text file
 std::string readTextFile(const std::string& filePath);
+
+// Read binary file
+std::vector<unsigned char> readBinaryFile(const std::string& filePath);
 
 #endif  // __RETRO_CORE_LAUNCHER_OS_H

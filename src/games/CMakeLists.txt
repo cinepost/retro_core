@@ -1,1 +1,1 @@
-add_subdirectory( core_test )
+add_subdirectory( knight )

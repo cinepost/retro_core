@@ -1,13 +1,18 @@
 #ifndef __RETRO_CORE_LAUNCHER_DISPLAY_H
 #define __RETRO_CORE_LAUNCHER_DISPLAY_H
 
+#include "osd.h"
+
 #include <imgui.h>
+
+#include <memory>
+#include <mutex>
 
 namespace RetroLauncher {
 
 class Display {
     public:
-        Display(): mFrameCount(0) {};
+        Display(): mFrameCount(0), mFrontendFrameCount(0) {};
 
         virtual ~Display() {};
 
@@ -39,10 +44,29 @@ class Display {
             }
         }
 
+        virtual OSD* getOSD() { return nullptr; }
+
         size_t getFrameCount() const { return mFrameCount; }
 
+        void setFrontendFrameCount(size_t frame_number) { 
+            std::lock_guard<std::mutex> lock(mFrontendMutex);
+            mFrontendFrameCount = frame_number; 
+        }
+        
+        size_t getFrontendFrameCount() const { 
+            std::lock_guard<std::mutex> lock(mFrontendMutex);
+            return mFrontendFrameCount; 
+        }
+        const size_t* getFrontendFrameCountPtr() const { 
+            std::lock_guard<std::mutex> lock(mFrontendMutex);
+            return &mFrontendFrameCount; 
+        }
+
     private:
-        uint32_t mFrameCount;
+        size_t mFrameCount;
+        size_t mFrontendFrameCount;
+
+        mutable std::mutex mFrontendMutex;
 };
 
 }  // namespace RetroLauncher

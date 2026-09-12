@@ -2,6 +2,7 @@
 #define __RETRO_CORE_FRAMEWORK_GAME_ENGINE_ENGINE_CORE_H
 
 #include "asset_manager.h"
+#include "sound_engine.h"
 
 #include <chrono>
 #include <thread>
@@ -23,11 +24,8 @@ class GameState;
 
 class StateManager {
     public:
-        StateManager() {
-        }
-
-        ~StateManager() {
-        }
+        StateManager(SoundEngine& soundEngine){}
+        ~StateManager() {}
 
         void changeState(std::unique_ptr<GameState> pState);
         void pushState(std::unique_ptr<GameState> pState);
@@ -35,7 +33,6 @@ class StateManager {
         void handleInput(retro_input_state_t input_cb);
         void update(double dt);
         void render();
-        void renderAudio(int16_t* pSamplesData, size_t samples_per_frame);
         void reset();
         void clearAllAndChangeState(std::unique_ptr<GameState> pState);
 
@@ -53,7 +50,7 @@ using Duration = std::chrono::duration<double>;
 template<typename PPU>
 class EngineCore {
     public:
-        EngineCore(double targetFps = 60.0): mPPU() {
+        EngineCore(double targetFps = 60.0): mPPU(), mStateManager(mSoundEngine) {
             assert(targetFps > 0.0f);
 
             mTargetFps = targetFps;
@@ -64,8 +61,6 @@ class EngineCore {
         }
 
         virtual ~EngineCore() = default;
-
-        const AssetManager& getAssetManager() const;
 
         // Call this inside retro_load_game to ingest the static frontend pointers
         void bindLibretroEnvironmentCallback(retro_environment_t cb) {
@@ -99,19 +94,6 @@ class EngineCore {
             std::cerr << "Error initalizing PPU.\n";
             return false;
         }
-
-        void processAudio() {
-            if (!m_audio_batch_cb) return;
-
-            std::memset(mPCMMixBuffer.data(), 0, mPCMMixBuffer.size() * sizeof(uint16_t));
-
-            // If a GameState has attached an audio source, pull samples from it
-            mStateManager.renderAudio(mPCMMixBuffer.data(), mSamplesPerFrame);
-            
-            // Deliver raw stereo PCM blocks to the active Libretro frontend
-            m_audio_batch_cb(mPCMMixBuffer.data(), mPCMMixBuffer.size() / 2);
-        }
-
 
         void renderFrame() {
             // Poll input via libretro callback
@@ -165,17 +147,34 @@ class EngineCore {
             return true;
         }
 
-        [[nodiscard]] const PPU& getPPU() const noexcept { return mPPU; }
+        [[nodiscard]] inline PPU& getPPU() noexcept { return mPPU; }
+        [[nodiscard]] inline const PPU& getPPU() const noexcept { return mPPU; }
 
-        [[nodiscard]] double getTargetFPS() const { return mTargetFps; }
-        [[nodiscard]] double getSoundSamplingRate() const { return mSoundSamplingRate; }
+        [[nodiscard]] inline double getTargetFPS() const { return mTargetFps; }
+        [[nodiscard]] inline double getSoundSamplingRate() const { return mSoundSamplingRate; }
 
-        PPU& getPPU() { return mPPU; }
+        [[nodiscard]] inline SoundEngine& getSoundEngine() noexcept { return mSoundEngine; }
+
+        [[nodiscard]] inline AssetManager& getAssetManager() noexcept { return mAssetManager; }
 
         virtual constexpr uint32_t getFramebufferStride() const = 0;
         virtual constexpr uint16_t getFramebufferWidth() const = 0;
         virtual constexpr uint16_t getFramebufferHeight() const = 0;
         virtual constexpr float getFramebufferAspect() const = 0;
+
+    private:
+        void processAudio() {
+            if (!m_audio_batch_cb) return;
+
+            std::memset(mPCMMixBuffer.data(), 0, mPCMMixBuffer.size() * sizeof(uint16_t));
+
+            // Single call handles ALL internal tracks and channels seamlessly
+            mSoundEngine.mixFrameAudio(mPCMMixBuffer.data(), mSamplesPerFrame);
+            
+            // Deliver raw stereo PCM blocks to the active Libretro frontend
+            m_audio_batch_cb(mPCMMixBuffer.data(), mPCMMixBuffer.size() / 2);
+        }
+
 
     protected:
         [[nodiscard]] virtual bool initImpl() = 0;
@@ -185,7 +184,8 @@ class EngineCore {
         [[nodiscard]] inline StateManager& getStateManager() noexcept { return mStateManager; }
 
     private:
-        PPU mPPU;
+        PPU         mPPU;
+        SoundEngine mSoundEngine;
         
     private:
         double  mTargetFps;

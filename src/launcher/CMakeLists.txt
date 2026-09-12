@@ -8,8 +8,9 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(imgui)
 
-set(SOURCES 
+set(SOURCES
     os.cpp
+    osd.cpp
     texture.cpp
     renderpass.cpp
     framebuffer.cpp
@@ -30,7 +31,7 @@ add_executable(launcher ${SOURCES})
 target_include_directories(
     launcher
     PUBLIC
-    shader
+    ${EXTERNAL_DIR}
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends
 )

@@ -8,6 +8,7 @@
 #include <cstring>
 #include <fstream>
 #include <memory>
+#include <iostream>
 
 namespace RetroCore {
 
@@ -15,17 +16,28 @@ namespace GameEngine {
 
 class AssetManager {
     public:
-        struct AssetRecord {
-            const uint8_t* dataPointer = nullptr;
+        struct Asset {
+            const uint8_t* pData = nullptr;
             size_t sizeInBytes = 0;
             bool isDiskLoaded = false; // Tracks if memory is owned by a unique_ptr
+
+            [[nodiscard]] inline bool isValid() const noexcept { return pData != nullptr && sizeInBytes > 0;}
         };
 
         AssetManager() = default;
 
+        AssetManager(const AssetManager&) = delete;
+        AssetManager& operator=(const AssetManager&) = delete;
+
+
         // Parses a unified binary bundle loaded by retro_load_game
         bool loadBundleFromMemory(const uint8_t* bundleBuffer, size_t totalSize) {
             if (!bundleBuffer || totalSize < sizeof(uint32_t)) return false;
+
+            if(mBundleLoaded) {
+                std::cerr << "Assets bundle already loaded!" << std::endl;
+                return false;
+            }
 
             // Example structural format layout:
             // [4 Bytes: Number of files]
@@ -44,48 +56,73 @@ class AssetManager {
                 std::string fileName(reinterpret_cast<const char*>(bundleBuffer + offset));
                 offset += fileName.length() + 1;
 
+                std::cout << "[AssetManager] File " << fileName << " loaded from bundle" << std::endl;
+
                 // Read payload size data
                 uint32_t fileSize = 0;
                 std::memcpy(&fileSize, bundleBuffer + offset, sizeof(uint32_t));
                 offset += sizeof(uint32_t);
 
                 // Bind memory indices into virtual table
-                AssetRecord record;
-                record.dataPointer = bundleBuffer + offset;
+                Asset record;
+                record.pData = bundleBuffer + offset;
                 record.sizeInBytes = fileSize;
                 mRegistry[fileName] = record;
 
                 offset += fileSize;
                 if (offset > totalSize) return false; // Safety bounds overflow fallback
             }
+            mBundleLoaded = true;
             return true;
         }
 
         // Fetches pointer to memory sector containing asset data
-        const uint8_t* getFile(const std::string& name) {
-            auto it = mRegistry.find(name);
-            if (it != mRegistry.end()) {
-                return it->second.dataPointer;
+        const uint8_t* getFile(const std::string& name) const {
+            if(mBundleLoaded){
+                auto it = mRegistry.find(name);
+                if (it != mRegistry.end()) {
+                    return it->second.pData;
+                }
             }
 
              // Fallback: Attempt to load from the system disk if not found in memory bundle
             if (loadFileFromDisk(name)) {
-                return mRegistry[name].dataPointer;
+                return mRegistry[name].pData;
             }
 
             return nullptr;
         }
 
+        const Asset& getAsset(const std::string& name) const {
+            if (getFile(name) != nullptr) {
+                return mRegistry[name];
+            }
+            static const Asset sEmptyAsset;
+            return sEmptyAsset;
+        }
+
         // Fetches the exact size metric of the target file
-        size_t getFileSize(const std::string& name) {
+        size_t getFileSize(const std::string& name) const {
             if (getFile(name) != nullptr) {
                 return mRegistry[name].sizeInBytes;
             }
             return 0;
         }
 
+        bool hasFile(const std::string& name) const {
+            auto it = mRegistry.find(name);
+            if (it != mRegistry.end()) {
+                return it->second.pData != nullptr && it->second.sizeInBytes > 0;
+            }
+            return false;
+        }
+
+        size_t getFilesCount() const {
+            return mRegistry.size();
+        }
+
     private:
-        bool loadFileFromDisk(const std::string& filepath) {
+        bool loadFileFromDisk(const std::string& filepath) const {
             // Open file in binary mode at the end of the file to quickly capture size
             std::ifstream file(filepath, std::ios::binary | std::ios::ate);
             if (!file.is_open()) {
@@ -106,8 +143,8 @@ class AssetManager {
             }
 
             // Register the new dynamic asset records
-            AssetRecord record;
-            record.dataPointer = fileBuffer.get();
+            Asset record;
+            record.pData = fileBuffer.get();
             record.sizeInBytes = static_cast<size_t>(size);
             record.isDiskLoaded = true;
             
@@ -116,14 +153,17 @@ class AssetManager {
             // Push raw ownership down to the cache vector so it survives the scope of this function execution
             mDiskCache.push_back(std::move(fileBuffer));
             
+            std::cout << "[AssetManager] File " << filepath << " loaded from disk" << std::endl;
+
             return true;
         }
 
     private:
-        std::unordered_map<std::string, AssetRecord> mRegistry;
+        bool mBundleLoaded = false;
+        mutable std::unordered_map<std::string, Asset> mRegistry;
 
         // Holds heap allocation lifetimes for all filesystem fallback assets loaded at runtime
-        std::vector<std::unique_ptr<uint8_t[]>> mDiskCache; 
+        mutable std::vector<std::unique_ptr<uint8_t[]>> mDiskCache; 
 };
 
 

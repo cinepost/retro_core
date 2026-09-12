@@ -31,19 +31,19 @@ vec3 textureLinearXNearestY_RGB(sampler2D tex, vec2 uv, vec2 texSize) {
 }
 
 // 1D Horizontal Linear interpolation along scanline rowN
-vec3 sampleScanlineLinear(sampler2D tex, float u, int rowN, vec2 texSize) {
+vec4 sampleScanlineLinear(sampler2D tex, float u, int rowN, vec2 texSize) {
     float texelX = u * texSize.x - 0.5;
     
     int iX = int(floor(texelX));
     float fx = fract(texelX);
-    vec3 texelLeft  = texelFetch(tex, ivec2(iX,     rowN), 0).rgb;
-    vec3 texelRight = texelFetch(tex, ivec2(iX + 1, rowN), 0).rgb;
+    vec4 texelLeft  = texelFetch(tex, ivec2(iX,     rowN), 0).rgba;
+    vec4 texelRight = texelFetch(tex, ivec2(iX + 1, rowN), 0).rgba;
     
     return mix(texelLeft, texelRight, fx);
 }
 
 // 1D Horizontal Hann window interpolation along scanline rowN
-vec3 sampleScanlineHann(sampler2D tex, float u, int rowN, vec2 texSize) {
+vec4 sampleScanlineHann(sampler2D tex, float u, int rowN, vec2 texSize) {
     float texelX = u * texSize.x - 0.5;
     
     int iX = int(floor(texelX));
@@ -52,22 +52,22 @@ vec3 sampleScanlineHann(sampler2D tex, float u, int rowN, vec2 texSize) {
     const float PI = 3.14159265359;
     float w0 = 0.5 + 0.5 * cos(PI * fx);
     
-    vec3 texelLeft  = texelFetch(tex, ivec2(iX,     rowN), 0).rgb;
-    vec3 texelRight = texelFetch(tex, ivec2(iX + 1, rowN), 0).rgb;
+    vec4 texelLeft  = texelFetch(tex, ivec2(iX,     rowN), 0).rgba;
+    vec4 texelRight = texelFetch(tex, ivec2(iX + 1, rowN), 0).rgba;
     
     return mix(texelRight, texelLeft, w0);
 }
 
 // Nearest emulated sample given floating point position and texel offset.
 // Also zero's off screen.
-vec3 sampleFetchWithOffset(sampler2D tex, vec2 uv, vec2 off, vec2 texSize){
+vec4 sampleFetchWithOffset(sampler2D tex, vec2 uv, vec2 off, vec2 texSize){
     vec2 uvOffset = off / texSize;
     vec2 targetUV = uv + uvOffset;
     vec2 centeredUV = (floor(targetUV * texSize) + 0.5) / texSize;
 
     if(centeredUV.x <= 0.0 || centeredUV.x >= 1.0 || centeredUV.y <= 0.0 || centeredUV.y >= 1.0) {
-        return vec3(0.0, 0.0, 0.0);
+        return vec4(0.0, 0.0, 0.0, 0.0);
     }
 
-    return texture(tex, centeredUV).rgb;
+    return texture(tex, centeredUV).rgba;
 }

@@ -38,3 +38,25 @@ std::string readTextFile(const std::string& filePath) {
     stream << file.rdbuf();
     return stream.str();
 }
+
+std::vector<unsigned char> readBinaryFile(const std::string& filePath) {
+    // Open the file in binary mode and move the file pointer immediately to the end
+    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open " << filePath << std::endl;
+        return {}; // Return empty vector
+    }
+
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    std::vector<unsigned char> buffer(size);
+
+    if (file.read(reinterpret_cast<char*>(buffer.data()), size)) {
+        return buffer;
+    }
+
+    std::cerr << "Error: Failed to read data from " << filePath << std::endl;
+    return {};
+}

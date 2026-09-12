@@ -8,7 +8,7 @@
 
 #include "shader.h"
 #include "display.h"
-
+#include "osd.h"
 
 namespace RetroLauncher {
 
@@ -48,11 +48,15 @@ class CRT: public Display {
         Mode getMode() const { return mMode; }
         std::string getModeString() const;
 
+        virtual OSD* getOSD() override final { return mpOSD.get(); };
+
     private:
         void prepareEncoderTexture(uint16_t core_tex_width, uint16_t core_tex_height);
         void reloadShaders();
 
     private:
+        std::unique_ptr<OSD> mpOSD;
+
         Shader mEncoderShader; // Core Output Prep / Signal Encoder Pass 
         Shader mDecoderShader; // Signal Decoder Pass 
         Shader mHistoryShader; // Holds the accumulated decay RGB signal

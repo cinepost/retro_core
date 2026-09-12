@@ -74,20 +74,13 @@ void RenderPass::destroy() {
     mInputs.clear();
     mShader.destroy();
     mFramebuffer.destroy();
+
+    glDeleteVertexArrays(1, &mVAO); mVAO = 0;
+    glDeleteBuffers(1, &mVBO);
 }
 
 RenderPass::~RenderPass() {
     destroy();
-
-    if(mVAO > 0) {
-        glDeleteVertexArrays(1, &mVAO);
-        mVAO = 0;
-    }
-
-    if(mVBO > 0) {
-        glDeleteBuffers(1, &mVBO);
-        mVBO = 0;
-    }
 }
 
 

@@ -8,17 +8,19 @@ namespace RetroCore {
 namespace GameEngine {
 
 void StateManager::changeState(std::unique_ptr<GameState> pState) {
-    assert(1 == 2 && "StateManager::changeState(..) unimplemented!!!");
+    assert(false && "StateManager::changeState(..) unimplemented!!!");
 }
 
 void StateManager::pushState(std::unique_ptr<GameState> pState) {
+    if (!mStates.empty()) {
+        mStates.back()->exitState();
+    }
     mStates.push_back(std::move(pState));
     mStates.back()->enterState();
 }
 
 void StateManager::popState() {
     if (!mStates.empty()) {
-        mStates.back()->exitState();
         mStates.pop_back();
     }
 }
@@ -38,13 +40,6 @@ void StateManager::render() {
     // Render only the top state, or loop from back-to-front for transparent UI overlays
     if (!mStates.empty()) {
         mStates.back()->renderState();
-    }
-}
-
-void StateManager::renderAudio(int16_t* pSamplesData, size_t samples_per_frame) {
-    if(!pSamplesData) return;
-    if (!mStates.empty()) {
-        mStates.back()->renderStateAudio(pSamplesData, samples_per_frame);
     }
 }
 

@@ -3,10 +3,11 @@
 
 using namespace RetroCore::PPU;
 
+namespace KnightGame {
+
 static const std::string sIntroImageFilename = "images/title_image.png";
 static const std::string sIntroLogoFilename = "images/title_logo.png";
 static const std::string sIntroMusicMp3Filename = "music/suno_game_intro_01.mp3";
-    
 
 void Intro::enter() {
     mScrollY_F = 0.0;
@@ -88,3 +89,5 @@ void Intro::render() {
         mLogoShown = true;
     }
 }
+
+}  // KnightGame

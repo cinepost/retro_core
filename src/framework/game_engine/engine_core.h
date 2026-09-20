@@ -58,6 +58,8 @@ class EngineCore {
 
             mSamplesPerFrame = (44100.0 / mTargetFps) * 2; 
             mPCMMixBuffer.resize(mSamplesPerFrame);
+
+            mPPU.toggleDebugDrawablesState();
         }
 
         virtual ~EngineCore() = default;
@@ -85,6 +87,12 @@ class EngineCore {
 
         void bindLibretroInputStateCallback(retro_input_state_t cb) {
             m_input_state_cb = cb;
+        }
+
+        void keyboardCallback(bool down, unsigned keycode, uint32_t character, uint16_t key_modifiers) {
+            if (keycode == RETROK_d) {
+                mPPU.toggleDebugDrawablesState();
+            }
         }
 
         [[nodiscard]] bool init() {
@@ -120,11 +128,13 @@ class EngineCore {
                 // Direct to libretro rendering
                 stride_bytes = fb.pitch;
                 mPPU.render(static_cast<uint8_t*>(fb.data), stride_bytes);
+                mPPU.renderDebugScreen(static_cast<uint8_t*>(fb.data), stride_bytes);
                 buf = static_cast<const uint8_t*>(fb.data);
             } else {
                 // Rendering into intermediate buffer
                // static std::array<uint8_t, SCREEN_WIDTH * SCREEN_HEIGHT * 4> sFramebuffer; 
                 mPPU.render(mFramebuffer.data(), stride_bytes);
+                mPPU.renderDebugScreen(mFramebuffer.data(), stride_bytes);
                 buf = mFramebuffer.data();
             }
 
@@ -147,15 +157,15 @@ class EngineCore {
             return true;
         }
 
-        [[nodiscard]] inline PPU& getPPU() noexcept { return mPPU; }
-        [[nodiscard]] inline const PPU& getPPU() const noexcept { return mPPU; }
+        [[nodiscard]] PPU& getPPU() noexcept { return mPPU; }
+        [[nodiscard]] const PPU& getPPU() const noexcept { return mPPU; }
 
-        [[nodiscard]] inline double getTargetFPS() const { return mTargetFps; }
-        [[nodiscard]] inline double getSoundSamplingRate() const { return mSoundSamplingRate; }
+        [[nodiscard]] double getTargetFPS() const { return mTargetFps; }
+        [[nodiscard]] double getSoundSamplingRate() const { return mSoundSamplingRate; }
 
-        [[nodiscard]] inline SoundEngine& getSoundEngine() noexcept { return mSoundEngine; }
+        [[nodiscard]] SoundEngine& getSoundEngine() noexcept { return mSoundEngine; }
 
-        [[nodiscard]] inline AssetManager& getAssetManager() noexcept { return mAssetManager; }
+        [[nodiscard]] AssetManager& getAssetManager() noexcept { return mAssetManager; }
 
         virtual constexpr uint32_t getFramebufferStride() const = 0;
         virtual constexpr uint16_t getFramebufferWidth() const = 0;
@@ -181,7 +191,7 @@ class EngineCore {
         [[nodiscard]] virtual bool shutdownImpl() = 0;
 
         // Expose the manager so derived custom games can load states
-        [[nodiscard]] inline StateManager& getStateManager() noexcept { return mStateManager; }
+        [[nodiscard]] StateManager& getStateManager() noexcept { return mStateManager; }
 
     private:
         PPU         mPPU;

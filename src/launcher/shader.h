@@ -95,14 +95,14 @@ class Shader {
         // This looks up the uniform, tells the shader which slot to read from, 
         // and binds the actual GPU texture handle to that slot instantly.
         void pushTexture(const std::string& name, unsigned int textureID, int slotIndex) const {
-            // 1. Tell the shader sampler which texture unit slot it belongs to (e.g. 0, 1, 2)
+            // Tell the shader sampler which texture unit slot it belongs to (e.g. 0, 1, 2)
             setInt(name, slotIndex);
 
-            // 2. Activate the corresponding hardware texture unit
+            // Activate the corresponding hardware texture unit
             // GL_TEXTURE0 is defined as an incremental integer offset, so GL_TEXTURE0 + slotIndex works perfectly
             glActiveTexture(GL_TEXTURE0 + slotIndex);
 
-            // 3. Bind your actual GPU texture object ID to the active unit
+            // Bind your actual GPU texture object ID to the active unit
             glBindTexture(GL_TEXTURE_2D, textureID);
         }
 

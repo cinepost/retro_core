@@ -55,14 +55,14 @@ class RawPPU: public Abstract_PPU<Platform::RAW> {
 			std::fill(mVRAM.begin(), mVRAM.end(), 0);
 		}
 
-		inline void vramWrite(uint32_t vram_address, uint8_t value) {
+		void vramWrite(uint32_t vram_address, uint8_t value) {
 			mVRAM[vram_address % kVRAMSizeBytes] = value;
 		}
 
 		template<typename T>
 		void vramBlockSet(uint32_t vram_address, const T& value, uint16_t count);
 
-		inline void vramBlockWrite(uint32_t vram_address, const uint8_t* source_buffer, uint16_t num_bytes) {
+		void vramBlockWrite(uint32_t vram_address, const uint8_t* source_buffer, uint16_t num_bytes) {
 			std::memcpy(&mVRAM[vram_address % kVRAMSizeBytes], source_buffer, num_bytes);
 		}
 

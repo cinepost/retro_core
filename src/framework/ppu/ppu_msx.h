@@ -15,7 +15,7 @@
 #include <mutex>
 #include <functional>
 #include <queue>
-
+#include <cstdint>
 
 // https://www.spriters-resource.com/msx/knightmare/asset/115323/
 
@@ -211,10 +211,11 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 		using LOGOP = uint8_t;
 
 		struct alignas(8) Sprite {
+			Sprite() = default;
+
 			static constexpr uint16_t 	kInvalidPatternIndex = std::numeric_limits<uint16_t>::max();
-			static constexpr int16_t 	kOffScreenPos = std::numeric_limits<int16_t>::min();
-			int16_t x = kOffScreenPos;	// int16_t allows sprites to be partially hidden top/left
-			int16_t y = kOffScreenPos;
+			int16_t x = 0;	// int16_t allows sprites to be partially hidden top/left
+			int16_t y = kVerticalTerminatorCode;   // Invisible by default;
 			uint16_t index = kInvalidPatternIndex; // Pattern index. (If using 16x16 sprites, must be a multiple of 4)
 			
 			struct Attributes {
@@ -260,7 +261,7 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 			mBorderBackgroundColor = color_index;
 		}
 
-		inline uint8_t getBorderBackgroundColor() const {
+		uint8_t getBorderBackgroundColor() const {
 			return mBorderBackgroundColor;
 		}
 
@@ -308,55 +309,55 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 
 		void writeTileIndex(uint16_t name_table_offset, uint16_t tile_index);
 
-		[[nodiscard]] inline uint8_t getCurrentSpritesExtent() const {
+		[[nodiscard]] uint8_t getCurrentSpritesExtent() const {
 			return (mSpriteSize == SpriteSize::SPRITE_8 ? 8 : 16) * (mSpritesMag ? 2 : 1);
 		}
 
-		inline void setPatternTableAddress(uint32_t address) {
+		void setPatternTableAddress(uint32_t address) {
 			mPatternTableAddress = address % kVRAMSizeBytes;
 		}
 
-		[[nodiscard]] inline uint32_t getPatternTableAddress() const {
+		[[nodiscard]] uint32_t getPatternTableAddress() const {
 			return mPatternTableAddress;
 		}
 
-		inline void setColorTableAddress(uint32_t address) {
+		void setColorTableAddress(uint32_t address) {
 			mColorTableAddress = address % kVRAMSizeBytes;
 		}
 
-		[[nodiscard]] inline uint32_t getColorTableAddress() const {
+		[[nodiscard]] uint32_t getColorTableAddress() const {
 			return mColorTableAddress;
 		}
 
-		inline void setNameTableAddress(uint32_t address) {
+		void setNameTableAddress(uint32_t address) {
 			mNameTableAddress = address % kVRAMSizeBytes;
 		}
 
-		[[nodiscard]] inline uint32_t getNameTableAddress() const {
+		[[nodiscard]] uint32_t getNameTableAddress() const {
 			return mNameTableAddress;
 		}
 
-		inline void setSpritePatternTableAddress(uint32_t address) {
+		void setSpritePatternTableAddress(uint32_t address) {
 			mSpritePatternTableAddress = address % kVRAMSizeBytes;
 		}
 
-		[[nodiscard]] inline uint32_t getSpritePatternTableAddress() const {
+		[[nodiscard]] uint32_t getSpritePatternTableAddress() const {
 			return mSpritePatternTableAddress;
 		}
 
-		inline void setSpriteAttributeTableAddress(uint32_t address) {
+		void setSpriteAttributeTableAddress(uint32_t address) {
 			mSpriteAttributeTableAddress = address % kVRAMSizeBytes;
 		}
 
-		[[nodiscard]] inline uint32_t getSpriteAttributeTableAddress() const {
+		[[nodiscard]] uint32_t getSpriteAttributeTableAddress() const {
 			return mSpriteAttributeTableAddress;
 		}
 
-		inline void setSpriteColorTableAddress(uint32_t address) {
+		void setSpriteColorTableAddress(uint32_t address) {
 			mSpriteColorTableAddress = address % kVRAMSizeBytes;
 		}
 
-		[[nodiscard]] inline uint32_t getSpriteColorTableAddress() const {
+		[[nodiscard]] uint32_t getSpriteColorTableAddress() const {
 			return mSpriteColorTableAddress;
 		}
 
@@ -378,14 +379,14 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 			std::fill(mVRAM.begin(), mVRAM.end(), 0);
 		}
 
-		inline void vramWrite(uint32_t vram_address, uint8_t value) {
+		void vramWrite(uint32_t vram_address, uint8_t value) {
 			mVRAM[vram_address % kVRAMSizeBytes] = value;
 		}
 
 		template<typename T>
 		void vramBlockSet(uint32_t vram_address, const T& value, uint16_t count);
 
-		inline void vramBlockWrite(uint32_t vram_address, const uint8_t* source_buffer, uint16_t num_bytes) {
+		void vramBlockWrite(uint32_t vram_address, const uint8_t* source_buffer, uint16_t num_bytes) {
 			std::memcpy(&mVRAM[vram_address % kVRAMSizeBytes], source_buffer, num_bytes);
 		}
 
@@ -486,6 +487,16 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 template <FramebufferDims FBDIMS>
 class MsxPPU final: public MsxPPU_BASE {
 	public:
+		class DebugDrawableRect: public DebugDrawable {
+			public:
+				DebugDrawableRect(int16_t x, int16_t y, uint16_t w, uint16_t h, bool outline = false): mX(x), mY(y), mW(w), mH(h), mOutline(outline) {}
+				void draw(uint8_t* pFrameData, uint32_t stride_bytes) override final;
+			private:
+				int16_t mX, mY; 
+				uint16_t mW, mH;
+				uint16_t mOutline;
+		};
+
 		static constexpr uint16_t getPatternsCountPerScreen() {
 			return (FBDIMS.width / 8) * (FBDIMS.height / 8);
 		}
@@ -524,7 +535,7 @@ class MsxPPU final: public MsxPPU_BASE {
 			mCurrentPageIndex = index % getVramPagesCount();
 		}
 
-		[[nodiscard]] inline uint8_t getCurrentVramPageIndex() const noexcept {
+		[[nodiscard]] uint8_t getCurrentVramPageIndex() const noexcept {
 			return mCurrentPageIndex;
 		}
 		
@@ -536,7 +547,7 @@ class MsxPPU final: public MsxPPU_BASE {
 			mScrollX = absolute_x % sMaxScrollX;
 		}
 
-		[[nodiscard]] inline uint16_t getScrollX() const { return mScrollX; }
+		[[nodiscard]] uint16_t getScrollX() const { return mScrollX; }
 
 		// We are doing smooth V9958 style scrolling all the time
 		// Vertical scroll offset (0 to FBDIMS.height pixels)
@@ -546,7 +557,7 @@ class MsxPPU final: public MsxPPU_BASE {
 			mScrollY = absolute_y % sMaxScrollY;
 		}
 
-		[[nodiscard]] inline uint16_t getScrollY() const { return mScrollY; }
+		[[nodiscard]] uint16_t getScrollY() const { return mScrollY; }
 
 		constexpr uint32_t getVramPageAddress(uint16_t page_index) const {
 			return page_index * FBDIMS.width * FBDIMS.height; // we just use one byte per pixel no matter what SCREEN is set.
@@ -628,11 +639,9 @@ class MsxPPU final: public MsxPPU_BASE {
 		/**
 		* Sets all sprite attributes Y to kVerticalTerminatorCode. This tells VPD to stop sprites processing. 
 		*/
-		inline void clearAllSpriteAttributes() noexcept {
-			for(uint16_t sprite_id = 0; sprite_id < kMaximumSpritesCount; ++sprite_id) {
-				Sprite& sprite = getSpriteAttribute(sprite_id);
-				sprite.y = kVerticalTerminatorCode;
-			}
+		void clearAllSpriteAttributes() noexcept {
+			static const Sprite sInitSATEntry({});
+			std::fill_n(reinterpret_cast<Sprite*>(&mVRAM[getSpriteAttributeTableAddress()]), kMaximumSpritesCount, sInitSATEntry); 
 		}
 
 	private:
@@ -664,7 +673,7 @@ class MsxPPU final: public MsxPPU_BASE {
 		}
 
 		template<ScreenMode SCREEN_MODE>
-		inline void render_SPRITES_LINE(uint16_t line, uint8_t* pFrameData, uint32_t stride_bytes) {
+		void render_SPRITES_LINE(uint16_t line, uint8_t* pFrameData, uint32_t stride_bytes) {
 			if(mSpritesDisableFlag || mVisibleSpritesCount == 0) return;
 			
 			// Render sprites
@@ -701,6 +710,12 @@ class MsxPPU final: public MsxPPU_BASE {
 					}
 				}
 			}
+		}
+
+	public:
+		// shorts for debug drawings
+		void drawDebugRect(int16_t x, int16_t y, uint16_t w, uint16_t h, bool outline) {
+			mDebugDrawablesList.push_back(std::make_unique<DebugDrawableRect>(x, y, w, h, outline));
 		}
 };
 

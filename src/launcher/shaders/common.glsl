@@ -1,10 +1,30 @@
+#ifndef RGB_to_YIQ
+#define RGB_to_YIQ  mat3x3(0.299, 0.595716, 0.211456, 0.587, -0.274453, -0.522591, 0.114, -0.321263, 0.311135)
+#endif//RGB_to_YIQ
+
+#ifndef YIQ_to_RGB
+#define YIQ_to_RGB  mat3x3(1.0, 1.0, 1.0, 0.9563, -0.2721, -1.107, 0.621, -0.6474, 1.7046)
+#endif//YIQ_to_RGB
+
+#ifndef RGB_to_YUV
+#define RGB_to_YUV  mat3x3(0.299, -0.14713, 0.615, 0.587, -0.28886, -0.514991, 0.114, 0.436, -0.10001)
+#endif//RGB_to_YUV
+
+#ifndef YUV_to_RGB
+#define YUV_to_RGB  mat3x3(1.0, 1.0, 1.0, 0.0, -0.39465, 2.03211, 1.13983, -0.5806, 0.0)
+#endif//YUV_to_RGB
+
 float vignette(vec2 uv, float power) {
     float d = pow(distance(vec2(0.5),uv), power);
     return mix(1.0, 0.0, d);
 }
 
-float hash(vec2 co) {
+float rand(vec2 co) {
     return fract(sin(dot(co, vec2(12.9898, 78.233) * 2.0)) * 43758.5453);
+}
+// Helper function to calculate Gaussian weight
+float gaussian(float x, float sigma) {
+    return exp(-(x * x) / (2.0 * sigma * sigma));
 }
 
 // A highly precise, monotonic approximation of the error function (erf)

@@ -10,6 +10,7 @@
 #include <cassert>
 #include <limits>
 #include <variant>
+#include <memory>
 
 namespace RetroCore {
 
@@ -41,8 +42,22 @@ class PPU_BASE {
 		using DebugRegisters = std::vector<std::pair<std::string, DebugRegisterValue>>;
 		const DebugRegisters& getDebugRegisters() const { return mDebugRegisters; }
 
+		class DebugDrawable {
+			public:
+				DebugDrawable() = default;
+				virtual ~DebugDrawable() = default;
+				virtual void draw(uint8_t* pFrameData, uint32_t stride_bytes) = 0;
+		};
+
+		void pushDebugDrawable(std::unique_ptr<DebugDrawable> pDrawable) { mDebugDrawablesList.push_back(std::move(pDrawable)); }
+		void clearDebugDrawables() { mDebugDrawablesList.clear(); }
+		void toggleDebugDrawablesState() { mDebugDrawablesEnabled = !mDebugDrawablesEnabled; }
+
 	protected:
 		DebugRegisters mDebugRegisters;
+
+		std::vector<std::unique_ptr<DebugDrawable>> mDebugDrawablesList;
+		bool mDebugDrawablesEnabled = false;
 };
 
 

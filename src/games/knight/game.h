@@ -6,7 +6,8 @@
 #include "framework/game_engine/game_state.h"
 #include "framework/game_engine/mp3_stream.h"
 
-#include "game_world.h"
+#include <cmath>
+#include <cstdint>
 
 #define FRAMEBUFFER_WIDTH 512
 #define FRAMEBUFFER_HEIGHT 288
@@ -18,6 +19,50 @@ using Asset = GameEngine::AssetManager::Asset;
 using AssetManager = GameEngine::AssetManager;
 using SoundEngine  = GameEngine::SoundEngine;
 using StateManager = GameEngine::StateManager;
+
+namespace KnightGame {
+
+class GameObject;
+
+class ObjectSpawner {
+    public:
+        virtual ~ObjectSpawner() = default;
+        virtual void spawnObject(std::unique_ptr<GameObject> newObject) = 0;
+};
+
+class SpriteList {
+    public:
+
+        SpriteList(V99x8& ppu): mPPU(ppu) {
+            mSprites.reserve(1024);
+        }
+
+        struct Sprite {
+            Sprite(): x(0), y(PPU::MsxPPU_BASE::kVerticalTerminatorCode), pattern(0), attribs(0) {}
+            Sprite(int16_t _x, int16_t _y, uint16_t _pattern, uint8_t _attr): x(_x), y(_y), pattern(_pattern), attribs(_attr) {}
+            Sprite(float _x, float _y, uint16_t _pattern, uint8_t _attr): x(static_cast<int16_t>(std::floor(_x))), y(static_cast<int16_t>(std::floor(_y))), pattern(_pattern), attribs(_attr) {}
+            int16_t x = 0;
+            int16_t y = 0;
+
+            uint16_t pattern = 0; // sprite pattern
+            PPU::MsxPPU_BASE::Sprite::Attributes attribs;
+        };
+
+        void clear() noexcept {
+            mSprites.clear();
+        }
+
+        void push(const Sprite& sprite) const {
+            assert(mSprites.size() < PPU::MsxPPU_BASE::kMaximumSpritesCount);
+            mSprites.push_back(sprite); 
+        }
+
+        [[nodiscard]] const std::vector<Sprite>& getSprites() const noexcept { return mSprites; }
+
+    private:
+        V99x8& mPPU;
+        mutable std::vector<Sprite> mSprites;
+};
 
 // UI & Sequence States
 class BaseState : public GameEngine::GameState {
@@ -89,9 +134,9 @@ class LevelSummary: public BaseState {
         double   mTimeToShow;
 };
 
-class KnightmareGame : public GameEngine::EngineCore<V99x8> {
+class Game : public GameEngine::EngineCore<V99x8> {
     public:
-        KnightmareGame(double target_fps = 60.0);
+        Game(double target_fps = 60.0);
 
         virtual constexpr uint16_t getFramebufferWidth() const { return FRAMEBUFFER_WIDTH; }
         virtual constexpr uint16_t getFramebufferHeight() const { return FRAMEBUFFER_HEIGHT; }
@@ -105,6 +150,8 @@ class KnightmareGame : public GameEngine::EngineCore<V99x8> {
         [[nodiscard]] virtual bool initImpl();
         [[nodiscard]] virtual bool shutdownImpl();
 };
+
+}  // namespace KnightGame
 
 #endif  // __RETRO_CORE_GAMES_KNIGHTMARE_GAME_H
 

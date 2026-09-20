@@ -32,14 +32,23 @@ vec3 textureLinearXNearestY_RGB(sampler2D tex, vec2 uv, vec2 texSize) {
 
 // 1D Horizontal Linear interpolation along scanline rowN
 vec4 sampleScanlineLinear(sampler2D tex, float u, int rowN, vec2 texSize) {
+    if(u < 0.001 || u > 0.999) return vec4(0.0, 0.0, 0.0, 1.0);
     float texelX = u * texSize.x - 0.5;
     
     int iX = int(floor(texelX));
     float fx = fract(texelX);
-    vec4 texelLeft  = texelFetch(tex, ivec2(iX,     rowN), 0).rgba;
-    vec4 texelRight = texelFetch(tex, ivec2(iX + 1, rowN), 0).rgba;
+    vec4 texelLeft  = texelFetch(tex, ivec2(min(texSize.x - 1, iX),     rowN), 0).rgba;
+    vec4 texelRight = texelFetch(tex, ivec2(min(texSize.x - 1, iX + 1), rowN), 0).rgba;
     
     return mix(texelLeft, texelRight, fx);
+}
+
+// 1D Horizontal Nearest interpolation along scanline rowN
+vec4 sampleScanlineNearest(sampler2D tex, float u, int rowN, vec2 texSize) {
+    float texelX = u * texSize.x - 0.5;
+    
+    int iX = int(floor(texelX));
+    return texelFetch(tex, ivec2(int(floor(texelX)), rowN), 0).rgba;
 }
 
 // 1D Horizontal Hann window interpolation along scanline rowN
@@ -54,7 +63,23 @@ vec4 sampleScanlineHann(sampler2D tex, float u, int rowN, vec2 texSize) {
     
     vec4 texelLeft  = texelFetch(tex, ivec2(iX,     rowN), 0).rgba;
     vec4 texelRight = texelFetch(tex, ivec2(iX + 1, rowN), 0).rgba;
+
+    return mix(texelRight, texelLeft, w0);
+}
+
+// Sharper version of Horizontal Hann
+vec4 sampleScanlineHannSharp(sampler2D tex, float u, int rowN, vec2 texSize) {
+    float texelX = u * texSize.x - 0.5;
     
+    int iX = int(floor(texelX));
+    float fx = pow(fract(texelX), 2);
+    
+    const float PI = 3.14159265359;
+    float w0 = 0.5 + 0.5 * cos(PI * fx);
+    
+    vec4 texelLeft  = texelFetch(tex, ivec2(iX,     rowN), 0).rgba;
+    vec4 texelRight = texelFetch(tex, ivec2(iX + 1, rowN), 0).rgba;
+
     return mix(texelRight, texelLeft, w0);
 }
 

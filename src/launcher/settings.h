@@ -12,6 +12,7 @@ struct RuntimeSettings {
     std::string         last_rom_path = "";
     float               audio_volume = 1.0f;
     float               screen_scale = 1.0f;
+    bool                use_shaders = true;
     bool                aspect_ratio_lock = true;
     bool                fullscreen = true;
     bool                imgui_hud_show = false;
@@ -38,6 +39,7 @@ void saveINI(const RuntimeSettings& settings) {
     ini["Video"]["Scale"] = std::to_string(settings.screen_scale);
     ini["Video"]["AspectLock"] = boolToString(settings.aspect_ratio_lock);
     ini["Video"]["Fullscreen"] = boolToString(settings.fullscreen);
+    ini["Video"]["UseShaders"] = boolToString(settings.use_shaders);
     ini["Audio"]["Volume"] = std::to_string(settings.audio_volume);
 
     mINI::INIFile file("config.ini");
@@ -65,6 +67,9 @@ void loadINI(RuntimeSettings& settings) {
         }
         if (ini["Video"].has("Fullscreen")) {
             settings.fullscreen = stringToBool(ini["Video"]["Fullscreen"], true);
+        }
+        if (ini["Video"].has("UseShaders")) {
+            settings.use_shaders = stringToBool(ini["Video"]["UseShaders"], true);
         }
         if (ini["Audio"].has("Volume")) {
             settings.audio_volume = std::stof(ini["Audio"]["Volume"]);

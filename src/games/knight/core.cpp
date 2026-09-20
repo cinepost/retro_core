@@ -38,9 +38,10 @@ namespace Assets {
     extern const size_t EMBEDDED_BUNDLE_SIZE;
     extern const uint8_t EMBEDDED_BUNDLE_DATA[];
 }
+
 }
 
-static KnightmareGame gGame(TARGET_FPS);
+static KnightGame::Game gGame(TARGET_FPS);
 
 static void fallback_log(enum retro_log_level level, const char *fmt, ...) {
    (void)level;
@@ -48,6 +49,10 @@ static void fallback_log(enum retro_log_level level, const char *fmt, ...) {
    va_start(va, fmt);
    vfprintf(stderr, fmt, va);
    va_end(va);
+}
+
+static void keyboard_callback(bool down, unsigned keycode, uint32_t character, uint16_t key_modifiers) {
+   gGame.keyboardCallback(down, keycode, character, key_modifiers);
 }
 
 // Capture callbacks from the frontend early
@@ -64,6 +69,10 @@ void retro_set_environment(retro_environment_t cb) {
    } else {
       log_cb = fallback_log;
    }
+
+   // Bing keyboard
+   struct retro_keyboard_callback cb_keyboard = { keyboard_callback };
+   cb(RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK, &cb_keyboard);
 }
 
 void retro_set_video_refresh(retro_video_refresh_t cb) { 

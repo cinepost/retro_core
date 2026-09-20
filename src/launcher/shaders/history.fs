@@ -1,6 +1,6 @@
 #version 330 core
 
-#pragma parameter vec3 uDecayCoefficients "Decay" 0.15 0.07 0.03  0.0 0.0 0.0  0.99 0.99 0.99
+#pragma parameter vec3 uDecayCoefficients "Decay" 0.22 0.16 0.11  0.0 0.0 0.0  0.99 0.99 0.99
 
 in vec2 vTexCoord;
 out vec4 FragColor;

@@ -20,26 +20,10 @@ template <size_t COLOR_COUNT>
     img_out_data.resize(img_width * img_height);
     
     std::vector<unsigned char> imageFileBytes;
-    unsigned int width = 0;
-    unsigned int height = 0;
 
     // Load the PNG file from disk into memory
     if (lodepng::load_file(imageFileBytes, filename) != 0) {
         std::cerr << "Error loadIndexedPng(): Failed to open file " << filename << "\n";
-        return false;
-    }
-
-    // Inspect the header without decompressing pixel data
-    lodepng::State state;
-    unsigned error = lodepng_inspect(&width, &height, &state, imageFileBytes.data(), imageFileBytes.size());
-    
-    if (error) {
-        std::cerr << "Error loadIndexedPng(): " << filename << " inspection error " << error << ": " << lodepng_error_text(error) << std::endl;
-        return false;
-    }
-
-    if(width != img_width || height != img_height) {
-        std::cerr << "Error loadIndexedPng(): Unexpected image " << filename << " size requested " << img_width << "x" << img_height << ". Actual image size is (" << width << "x" << height << ")" << std::endl;
         return false;
     }
 

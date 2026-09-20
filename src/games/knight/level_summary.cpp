@@ -3,6 +3,8 @@
 
 #include "level_01_tiles.png.hpp"
 
+namespace KnightGame {
+
 static const std::string sBgmFileName = "music/level_start.mp3";
 
 void LevelSummary::enter() {
@@ -69,3 +71,5 @@ void LevelSummary::update(double dt) {
 void LevelSummary::render() {
     
 }
+
+}  // KnightGame

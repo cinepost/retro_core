@@ -12,6 +12,10 @@ namespace GameEngine {
 class Timer {
     public:
         Timer() = default;
+
+        Timer(float durationSeconds, std::function<void()> onExpiredAction = nullptr):Timer() {
+            start(durationSeconds, onExpiredAction);
+        }
         
         // Configures a timer countdown window with an optional callback action
         void start(float durationSeconds, std::function<void()> onExpiredAction = nullptr) {
@@ -57,6 +61,7 @@ class Timer {
         bool hasExpired() const { return mIsExpired; }
         
         float getTimeRemaining() const { return mTimeRemaining; }
+        float getTimeElapsed() const { return std::max(0.0f, mDuration - mTimeRemaining); }
         float getElapsedPercentage() const { return (mDuration > 0.0f) ? (1.0f - (mTimeRemaining / mDuration)) : 1.0f; }
 
     private:
@@ -99,7 +104,7 @@ class GameState {
     protected:
         double getTimeElapsed() const { return mTimeElapsed; }
 
-        inline bool isAnyKeyPressed(retro_input_state_t input_cb, unsigned port) {
+        bool isAnyKeyPressed(retro_input_state_t input_cb, unsigned port) {
             // Keep track of what was held down on the previous frame
             // RETROK_LAST is usually around 320
             static std::vector<bool> prev_key_state(RETROK_LAST, false);
@@ -127,60 +132,6 @@ class GameState {
     private:
         double   mTimeElapsed;
 };
-
-/*
-// UI & Sequence States
-class IntroState : public GameState {
-    public:
-        using GameState::GameState;
-        void enter() override;
-        void exit() override;
-        void handleInput() override;
-        void update(double dt) override; // Tracks timer to automatically transition
-        void render() override; // Draws splash art
-};
-
-class CutsceneState : public GameState {
-    public:
-        CutsceneState(StateManager& sm, const std::string& scriptPath);
-        void enter() override;
-        void exit() override;
-        void handleInput() override; // Allows skipping via buttons
-        void update(double dt) override; // Advances dialogue/animation frames
-        void render() override;
-};
-
-class CreditsState : public GameState {
-    public:
-        using GameState::GameState;
-        void enter() override;
-        void exit() override;
-        void handleInput() override;
-        void update(double dt) override; // Scrolls text upwards vertically
-        void render() override;
-};
-
-// Active Gameplay State
-class LevelState : public GameState {
-    public:
-        LevelState(StateManager& sm, const std::string& levelMapPath);
-        void enter() override;
-        void exit() override;
-        void handleInput() override;
-        void update(double dt) override; // System loops over game objects
-        void render() override; // Camera view handling (scrolling)
-
-    private:
-        void checkCollisions();
-        void managePlayerProgression(); // Handles total lives, scores, level switches
-        
-        struct Vector2D { float x; float y; } m_cameraOffset;
-        int m_playerScore = 0;
-        int m_playerLives = 3;
-        
-        std::vector<std::unique_ptr<class GameObject>> m_entities;
-};
-*/
 
 }  // namespace GameEngine
 

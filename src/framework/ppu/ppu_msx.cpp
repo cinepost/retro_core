@@ -170,10 +170,6 @@ void MsxPPU_BASE::writeTileIndex(uint16_t name_table_offset, uint16_t tile_index
 	pNameTable[name_table_offset] = tile_index;
 }
 
-static inline void drawSpritesLine() {
-
-}
-
 template <FramebufferDims FBDIMS>
 bool MsxPPU<FBDIMS>::render_SCREEN_2(uint8_t* pFrameData, uint32_t stride_bytes) {
 	static constexpr uint16_t s_y_scroll_mask = FBDIMS.height * 2;
@@ -349,7 +345,13 @@ inline void fillRectN(uint8_t* pFrameData, uint32_t stride_bytes, uint16_t x, ui
 
 template <FramebufferDims FBDIMS>
 void MsxPPU<FBDIMS>::renderDebugScreen(uint8_t* pFrameData, uint32_t stride_bytes) {
-	
+	if(!mDebugDrawablesEnabled) return;
+
+	// Debug drawables
+	for(const std::unique_ptr<DebugDrawable>& pDrawable: mDebugDrawablesList) {
+		pDrawable->draw(pFrameData, stride_bytes);
+	}
+
 	// palette
 	{
 		static const uint16_t palette_entry_width = 8;
@@ -383,6 +385,27 @@ void MsxPPU<FBDIMS>::renderDebugScreen(uint8_t* pFrameData, uint32_t stride_byte
 			palette_start_y += palette_entry_height + palette_spacing;
 	    }
 	}
+}
+
+template <FramebufferDims FBDIMS>
+void MsxPPU<FBDIMS>::DebugDrawableRect::draw(uint8_t* pFrameData, uint32_t stride_bytes) {
+
+	uint16_t v_step = mOutline ? mH - 1 : 1;
+
+
+
+	// Horizontal lines
+	for(uint16_t y = std::max(0, (int)mY); y < std::min((int)FBDIMS.height,  mY + mH); ++y) {
+		for(uint16_t x = std::max(0, (int)mX); x < std::min((int)FBDIMS.width, mX + mW); ++x) {
+			
+			bool skip = mOutline && x != mX && y != mY && x != (mX + mW - 1) && y != (mY + mH - 1);
+			uint8_t* pDst = pFrameData + x*4 + y*stride_bytes;
+
+			pDst[0] = skip ? pDst[0] : ~pDst[0]; // B
+			pDst[1] = skip ? pDst[1] : ~pDst[1]; // G
+			pDst[2] = skip ? pDst[2] : ~pDst[2]; // R
+		}
+	}	
 }
 
 // Specialization

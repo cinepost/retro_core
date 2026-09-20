@@ -4,7 +4,10 @@
 #include "framework/ppu/ppu_msx_utils.h"
 #include "framework/game_engine/mp3_stream.h"
 
+static const std::string sAmikonLogoFileName = "images/amikon_logo_01.png";
 static const std::string sBgmFileName = "music/amikon_logo_sound.mp3";
+
+namespace KnightGame {
 
 void Boot::enter() {
     using PATTERN_8D = PPU::MsxPPU_BASE::PATTERN_8D;
@@ -18,14 +21,17 @@ void Boot::enter() {
     mPPU.setBlankingBit(false);
     mPPU.setBorderBackgroundColor(4);
 
-    static const std::string amikon_logo_filename = "/home/max/mnt/misc_hdd/dev/retro_core/games/virt_msx/KnightmareW/amikon_logo_01.png";
-    std::vector<PATTERN_8D_8C> logo_tiles = RetroCore::PPU::Utils::MSX::loadTilesFromIndexedPNG<PATTERN_8D_8C>(amikon_logo_filename, nullptr /* ref palette */, true /* skip empty tiles */);
-    if(logo_tiles.empty()) {
-        std::cerr << "Error loading logo tiles from " << amikon_logo_filename << std::endl;
-        return;
+    std::vector<PATTERN_8D_8C> logo_tiles;
+
+    if(mAssetManager.hasFile(sAmikonLogoFileName)) {
+        const Asset logo_image_asset = mAssetManager.getAsset(sAmikonLogoFileName);
+        logo_tiles = RetroCore::PPU::Utils::MSX::loadTilesFromIndexedPNG<PATTERN_8D_8C>(logo_image_asset.pData, logo_image_asset.sizeInBytes, nullptr /* ref palette */, true /* skip empty tiles */);
     }
 
-    std::cout << logo_tiles.size() << " tiles loaded from " << amikon_logo_filename << std::endl;
+    if(logo_tiles.empty()) {
+        std::cerr << "Error loading logo tiles from " << sAmikonLogoFileName << std::endl;
+        return;
+    }
 
     mPPU.setColorTableAddress(0x00000000);
     mPPU.setPatternTableAddress(0x0000000 + mPPU.getVramPageSize());
@@ -124,3 +130,5 @@ void Boot::render() {
 
     mPPU.setScrollY(mScrollY);
 }
+
+}  // namespace KnightGame

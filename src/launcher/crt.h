@@ -23,15 +23,16 @@ class CRT: public Display {
         enum class Mode: uint32_t {
             RF         = 0,
             COMPOSITE  = 1,
-            COMPONENT  = 2,
-            VGA        = 3,
-            COUNT      = 4
+            S_VIDEO    = 2,
+            COMPONENT  = 3,
+            VGA        = 4,
+            COUNT      = 5
         };
 
         CRT();
 
         virtual bool initImpl(uint16_t win_w, uint16_t win_h) override final;
-        virtual bool processImpl(GLuint core_texture, uint16_t core_tex_width, uint16_t core_tex_height) override final;
+        [[nodiscard]] virtual bool processImpl(GLuint core_texture, uint16_t core_tex_width, uint16_t core_tex_height) override final;
         virtual void destroy() override final;
         virtual const std::string& getDisplayName() const override final {
             static const std::string sName = "CRT";
@@ -107,20 +108,48 @@ class CRT: public Display {
         bool mInitialized;
 };
 
-constexpr CRT::Standard operator%(CRT::Standard lhs, uint8_t rhs) {
-    return static_cast<CRT::Standard>(static_cast<uint8_t>(lhs) % rhs);
+constexpr CRT::Standard operator%(CRT::Standard lhs, uint32_t rhs) {
+    return static_cast<CRT::Standard>(static_cast<uint32_t>(lhs) % rhs);
 }
 
 constexpr CRT::Standard operator%(CRT::Standard lhs, CRT::Standard rhs) {
-    return static_cast<CRT::Standard>(static_cast<uint8_t>(lhs) % static_cast<uint8_t>(rhs));
+    return static_cast<CRT::Standard>(static_cast<uint32_t>(lhs) % static_cast<uint32_t>(rhs));
 }
 
-constexpr CRT::Mode operator%(CRT::Mode lhs, uint8_t rhs) {
-    return static_cast<CRT::Mode>(static_cast<uint8_t>(lhs) % rhs);
+constexpr CRT::Mode operator%(CRT::Mode lhs, uint32_t rhs) {
+    return static_cast<CRT::Mode>(static_cast<uint32_t>(lhs) % rhs);
 }
 
 constexpr CRT::Mode operator%(CRT::Mode lhs, CRT::Mode rhs) {
-    return static_cast<CRT::Mode>(static_cast<uint8_t>(lhs) % static_cast<uint8_t>(rhs));
+    return static_cast<CRT::Mode>(static_cast<uint32_t>(lhs) % static_cast<uint32_t>(rhs));
+}
+
+inline std::string to_string(CRT::Standard standard) {
+    switch(standard) {
+        case CRT::Standard::NTSC:
+            return "NTSC";
+        case CRT::Standard::PAL:
+            return "PAL";
+        default:
+            return "Unknown standard";
+    }
+}
+
+inline std::string to_string(CRT::Mode mode) {
+    switch(mode) {
+        case CRT::Mode::VGA:
+            return "VGA";
+        case CRT::Mode::COMPONENT:
+            return "COMPONENT";
+        case CRT::Mode::S_VIDEO:
+            return "S-VIDEO";
+        case CRT::Mode::COMPOSITE:
+            return "COMPOSITE";
+        case CRT::Mode::RF:
+            return "RF";
+        default:
+            return "Unknown mode";
+    }
 }
 
 

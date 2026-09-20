@@ -130,7 +130,7 @@ class NesPPU_BASE: public Abstract_PPU<Platform::NES> {
 			return StaticData::NES::DefaultFontCHR.data();
 		}
 
-		[[nodiscard]] inline uint8_t getSpritePaletteId(uint8_t sprite_attrib) noexcept {
+		[[nodiscard]] uint8_t getSpritePaletteId(uint8_t sprite_attrib) noexcept {
     		return sprite_attrib & 0x03; 
 		}
 

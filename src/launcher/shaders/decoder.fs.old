@@ -1,0 +1,125 @@
+#version 330 core
+
+#pragma parameter bool uBypass "Bypass" 0 0 1
+
+#pragma parameter float uLumaFilterWidth "Luma Filter Width" 2.0 1.0 10.0
+#pragma parameter float uChromaFilterWidth "Chroma Filter Width" 3.0 1.0 10.0
+
+in vec2 vTexCoord;
+out vec4 fragColor;
+
+uniform bool   uBypass;
+uniform uint   uConnType;       // 0=RF, 1=Composite, 2=Component, 3=VGA
+uniform uint   uStandard;       // 0=NTSC, 1=PAL
+uniform int    uPALCombEnabled;
+uniform int    uPALCombEdgeProtect;
+uniform int    uSyncStripEnabled;
+uniform float  uSyncLevel;
+uniform int    uFrameCount;
+uniform float  uInW, uInH;
+uniform float  uOutW, uOutH;
+uniform float  uEncW, uEncH;
+
+uniform float  uLumaFilterWidth = 1.0; 
+uniform float  uChromaFilterWidth = 3.5;
+
+uniform sampler2D uEncTex;
+
+#include "common.glsl"
+#include "sampling.glsl"
+
+vec3 xyz2rgb(vec3 c) {
+    if(uStandard == 0u) {
+        // NTSC
+        return YUV_to_RGB * c;
+    }
+
+    // PAL
+    return YIQ_to_RGB * c;
+}
+
+void main() {
+    float x = vTexCoord.x * uEncW;
+    float y = vTexCoord.y * uEncH;
+    int line = int(floor(y));
+
+    // VGA mode / Bypass
+    if(uConnType == VGA || uBypass) {
+        fragColor = vec4(texture(uEncTex, vTexCoord).rgb, 1.0);
+        return;
+    }
+
+    // COMPONENT MODE: Direct extraction, NO filtering/demodulation
+    if(uConnType == COMPONENT) {
+        fragColor = vec4(xyz2rgb(sampleScanlineLinear(uEncTex, vTexCoord.x, line, vec2(uInW, uInW)).rgb), 1.0);
+        return;
+    }
+
+    // COMPOSITE / RF
+    float stepX = 1.0 / uEncW;
+
+    float totalY = 0.0;
+    float totalI = 0.0;
+    float totalQ = 0.0;
+    
+    float lumaWeights = 0.0;
+    float chromaWeights = 0.0;
+
+    // IMPORTANT
+    // Doubling virtual subcarrier cycles per line effectively simulates the net result 
+    // of phase cancellation per spatial frame footprint. It compresses the artifact 
+    // frequency so it can be cleanly filtered out in a single static pass.
+    float cyclesPerLine = 227.5 * 2.0; 
+    float radiansPerPixel = (cyclesPerLine * 2.0 * 3.14159265) / uEncW;
+
+    float scaleRatio = uEncW / uInW;
+    float encodedLumaWidth = uLumaFilterWidth * scaleRatio;
+    float encodedChromaWidth = uChromaFilterWidth * scaleRatio;
+
+    int filterTapRadius = int(ceil(encodedChromaWidth * 2.0));
+
+    for (int i = -filterTapRadius; i <= filterTapRadius; i++) {
+        vec2 sampleOffset = vec2(float(i) * stepX, 0.0);
+        vec2 sampleTexCoord = vTexCoord + sampleOffset;
+        
+        // Clamp bounds to prevent sampling artifacts at screen edges
+        sampleTexCoord.x = clamp(sampleTexCoord.x, 0.0, 1.0);
+        
+        // 1. Read the raw modulated wave value from the Red channel
+        float signal = sampleScanlineLinear(uEncTex, sampleTexCoord.x, line, vec2(uEncW, uEncH)).r;
+        
+        // 2. Reconstruct the phase angle analytically for the sampled position
+        float sampleCurrentX = sampleTexCoord.x * uEncW;
+        float angle = (sampleCurrentX * radiansPerPixel);
+        
+        // 3. Demodulate components using the recovered local phase
+        float rawY = signal;
+        float rawI = signal * sin(angle) * 2.0;
+        float rawQ = signal * cos(angle) * 2.0;
+        
+        // 4. Evaluate Gaussian weights based on sample distance
+        float dist = abs(float(i));
+        float wLuma = exp(-0.5 * (dist * dist) / (encodedLumaWidth * encodedLumaWidth));
+        float wChroma = exp(-0.5 * (dist * dist) / (encodedChromaWidth * encodedChromaWidth));
+        
+        // Accumulate filtered signals
+        totalY += rawY * wLuma;
+        lumaWeights += wLuma;
+        
+        totalI += rawI * wChroma;
+        totalQ += rawQ * wChroma;
+        chromaWeights += wChroma;
+    }
+
+    vec3 decodedYIQ = vec3(
+        totalY / lumaWeights,
+        totalI / chromaWeights,
+        totalQ / chromaWeights
+    );
+
+    decodedYIQ.y *= 1.0;
+    decodedYIQ.z *= 1.0;
+
+    vec3 finalRGB = xyz2rgb(decodedYIQ);
+    fragColor = vec4(finalRGB, 1.0);
+}

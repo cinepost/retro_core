@@ -60,6 +60,10 @@ set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets") # game asset folder
 set(BUNDLE_OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/game_assets.bundle")
 
 file(GLOB_RECURSE ASSET_FILES 
+    "${ASSETS_SRC_DIR}/images/common_sprites.png"
+
+    "${ASSETS_SRC_DIR}/music/player_dying.mp3"
+    
     "${ASSETS_SRC_DIR}/music/*.mp3"
     "${ASSETS_SRC_DIR}/music/*.wav"
     "${ASSETS_SRC_DIR}/music/*.ogg"
@@ -85,6 +89,7 @@ add_compile_options(-march=native)
 add_library(knight MODULE
     core.cpp
     game.cpp
+    game_world.cpp
     boot.cpp
     intro.cpp
     level_summary.cpp

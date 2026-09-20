@@ -43,7 +43,7 @@ union RGBA8888 {
         #pragma GCC diagnostic pop
     #endif
 
-    inline uint32_t asXRGB8888() const {
+    uint32_t asXRGB8888() const {
         return v >> 8;
     }
 
@@ -52,12 +52,12 @@ union RGBA8888 {
     }
 
 	// Right-hand side mask: Pixel & 0xFFFFFF00
-    inline uint32_t operator&(uint32_t mask) const {
+    uint32_t operator&(uint32_t mask) const {
         return v & mask;
     }
 
     // Left-hand side mask: 0xFFFFFF00 & Pixel
-    inline friend uint32_t operator&(uint32_t mask, const RGBA8888& pixel) {
+    friend uint32_t operator&(uint32_t mask, const RGBA8888& pixel) {
         return mask & pixel.v;
     }
 
@@ -112,12 +112,12 @@ union RGB111 {
     }
 
     // Right-hand side bitwise AND: Color & Mask
-    inline uint8_t operator&(uint8_t mask) const {
+    uint8_t operator&(uint8_t mask) const {
         return v & mask;
     }
 
     // Left-hand side bitwise AND: Mask & Color
-    inline friend uint8_t operator&(uint8_t mask, const RGB111& color) {
+    friend uint8_t operator&(uint8_t mask, const RGB111& color) {
         return mask & color.v;
     }
 
@@ -168,12 +168,12 @@ union RGB222 {
     }
 
     // Right-hand side bitwise AND: Color & Mask
-    inline uint8_t operator&(uint8_t mask) const {
+    uint8_t operator&(uint8_t mask) const {
         return v & mask;
     }
 
     // Left-hand side bitwise AND: Mask & Color
-    inline friend uint8_t operator&(uint8_t mask, const RGB222& color) {
+    friend uint8_t operator&(uint8_t mask, const RGB222& color) {
         return mask & color.v;
     }
 
@@ -231,12 +231,12 @@ union RGB333 {
     }
 
     // Right-hand side bitwise AND: Color & Mask
-    inline uint16_t operator&(uint16_t mask) const {
+    uint16_t operator&(uint16_t mask) const {
         return v & mask;
     }
 
     // Left-hand side bitwise AND: Mask & Color
-    inline friend uint16_t operator&(uint16_t mask, const RGB333& color) {
+    friend uint16_t operator&(uint16_t mask, const RGB333& color) {
         return mask & color.v;
     }
 
@@ -296,12 +296,12 @@ union GRB332 {
     }
 
     // Right-hand side bitwise AND: Color & Mask
-    inline uint8_t operator&(uint8_t mask) const {
+    uint8_t operator&(uint8_t mask) const {
         return v & mask;
     }
 
     // Left-hand side bitwise AND: Mask & Color
-    inline friend uint8_t operator&(uint8_t mask, const GRB332& color) {
+    friend uint8_t operator&(uint8_t mask, const GRB332& color) {
         return mask & color.v;
     }
 
@@ -351,12 +351,12 @@ union RGB233 {
     }
 
     // Right-hand side bitwise AND: Color & Mask
-    inline uint8_t operator&(uint8_t mask) const {
+    uint8_t operator&(uint8_t mask) const {
         return v & mask;
     }
 
     // Left-hand side bitwise AND: Mask & Color
-    inline friend uint8_t operator&(uint8_t mask, const RGB233& color) {
+    friend uint8_t operator&(uint8_t mask, const RGB233& color) {
         return mask & color.v;
     }
 

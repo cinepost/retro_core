@@ -23,19 +23,13 @@ add_library(retro_core_lib STATIC
     
     common.cpp
     types.cpp
-    sprites.cpp
     palette.cpp
-    renderer.cpp
     vdp_utils.cpp
-    sound.cpp
     ppu/ppu_raw.cpp
     ppu/ppu_nes.cpp
     ppu/ppu_msx.cpp
     ppu/ppu_msx_utils.cpp
     ppu/ppu_utils.cpp
-    apu/apu_nes.cpp
-    apu/apu_psg.cpp
-    apu/apu_ym2612.cpp
     game_engine/engine_core.cpp
 
 #    #Generated static data

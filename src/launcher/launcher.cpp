@@ -165,7 +165,6 @@ SDL_GameController* g_gamepad = nullptr;
 
 // --- Global Hardware States ---
 bool        g_maintain_core_fps = true;
-bool        g_use_shaders = true; // Default
 GLuint      g_core_texture = 0;
 unsigned    g_pixel_format = RETRO_PIXEL_FORMAT_RGB565; // Default fallback layout
 bool        g_core_supports_no_game = true; // Default
@@ -947,7 +946,7 @@ int main(int argc, char *argv[]) {
                         g_core_paused = !g_core_paused;
                         break;
                     case SDLK_s: 
-                        g_use_shaders = !g_use_shaders;
+                        g_settings.use_shaders = !g_settings.use_shaders;
                         break;
                     case SDLK_v:
                         {
@@ -1041,9 +1040,8 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        glBindTexture(GL_TEXTURE_2D, g_core_texture);
         if (upload_new_frame) {
-
+            glBindTexture(GL_TEXTURE_2D, g_core_texture);
             GLint internal_format = GL_RGB;
             GLenum gl_type = GL_UNSIGNED_SHORT_5_6_5;
             GLenum gl_format = GL_RGB;
@@ -1079,11 +1077,12 @@ int main(int argc, char *argv[]) {
                 GL_BGRA, GL_UNSIGNED_BYTE, 
                 render_pixels.data());
             glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+            glBindTexture(GL_TEXTURE_2D, 0);
         }
         
         g_crt.setFrontendFrameCount(frontend_frame_count);
-        bool legacy_render = !g_use_shaders;
-        if(g_use_shaders) {
+        bool legacy_render = !g_settings.use_shaders;
+        if(g_settings.use_shaders) {
             legacy_render = !g_crt.process(g_core_texture, tex_w, tex_h);
         } 
 
@@ -1092,25 +1091,27 @@ int main(int argc, char *argv[]) {
             // Render the frame onto screen via OpenGL
             if (tex_w > 0 && tex_h > 0) {
                 glEnable(GL_TEXTURE_2D);
+                glUseProgram(0);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, g_core_texture);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-
-                //glViewport(0, 0, win_w, win_h);
 
                 float max_u = static_cast<float>(tex_w) / 1024.0f;
                 float max_v = static_cast<float>(tex_h) / 1024.0f;
 
                 glBegin(GL_QUADS);
+                    glColor3f(1.0f, 1.0f, 1.0f); 
                     glTexCoord2f(0.0f,   0.0f); glVertex2f(-1.0f,  1.0f);
                     glTexCoord2f(0.0f,  max_v); glVertex2f(-1.0f, -1.0f);
                     glTexCoord2f(max_u, max_v); glVertex2f( 1.0f, -1.0f);
                     glTexCoord2f(max_u,  0.0f); glVertex2f( 1.0f,  1.0f);
                 glEnd();
+               
+                glBindTexture(GL_TEXTURE_2D, 0);
                 glDisable(GL_TEXTURE_2D); // Crucial: Disable texturing so shapes render as flat colors
-    
             }
         }
-        glBindTexture(GL_TEXTURE_2D, 0);
 
         // RENDER HUD OVERLAY (IF ENABLED)
 
@@ -1222,7 +1223,7 @@ int main(int argc, char *argv[]) {
             ImGui::Text("System Perf: %.1f FPS", g_hud_current_fps);
             ImGui::SliderFloat("Audio Gain", &g_settings.audio_volume, 0.0f, 2.0f, "%.2f");
 
-            if(g_use_shaders){
+            if(g_settings.use_shaders){
                 g_crt.drawUI();
             }
 

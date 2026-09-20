@@ -3,17 +3,20 @@
 #pragma parameter vec3 uTintColor "Tint Color" 1.0 1.0 1.0  0.0 0.0 0.0  1.0 1.0 1.0
 #pragma parameter vec2 uPicShift "Picture Shift" 0.0 0.0  -1.0 -1.0  1.0 1.0
 
+
+#pragma parameter vec2 uBarrelDistortion "Barrel Distortion" 0.0075 0.01  0.0 0.0  0.2 0.2
+
 #pragma parameter float uEdgeDefocus "Edge Defocus" 0.05  0.0  0.1
 #pragma parameter float uAberration "Aberration" 0.1  0.0  0.5
 #pragma parameter vec2 uMisalignment "Misalignmenth" .5 -0.5  -2.0 -2.0  2.0 2.0
 
 #pragma parameter vec2 uPicStretch "Picture Stretch" 1.0 1.0  0.01 0.01  5.0 5.0
-#pragma parameter float uScanFlicker "Flickering" 0.25  0.0  1.0
+#pragma parameter float uScanFlicker "Flickering" 0.0  0.0  1.0
 
 in vec2 vTexCoord;
 out vec4 fragColor;
 
-uniform int     uMode; // 0 = RF, 1 = Composite, 2 = Component, 3 = VGA
+uniform int     uConnType;           // 0 = RF, 1 = Composite, 2 = Component, 3 = VGA
 uniform vec2    uVideoResolution;
 uniform vec2    uOSDResolution;
 uniform vec2    uOutResolution;
@@ -22,6 +25,7 @@ uniform vec3    uTintColor;
 uniform vec2    uPicShift;
 uniform vec2    uPicStretch;
 uniform float   uScanFlicker;
+uniform vec2    uBarrelDistortion;
 
 uniform float   uEdgeDefocus;
 uniform vec2    uMisalignment;
@@ -52,7 +56,7 @@ float hardPix = -4.0;
 vec2 warp=vec2(1.0/128.0, 1.0/128.0); 
 
 // Amount of shadow mask.
-float maskDark = 0.35;
+float maskDark = 0.25;
 float maskLight = 1.1;
 
 // Falloff shape.
@@ -63,7 +67,7 @@ float maskLight = 1.1;
 float shape = 3.0;
 
 // Amp signal.
-float overdrive = 1.55;
+float overdrive = 1.75;
 
 // sRGB to Linear.
 // Assuing using sRGB typed textures this should not be needed.
@@ -78,7 +82,7 @@ vec3 ToSrgb(vec3 c){return vec3(ToSrgb1(c.r),ToSrgb1(c.g),ToSrgb1(c.b));}
 // Set to zero, or remove Test() if using this shader.
 #if 1
 vec3 Test(vec3 c){
-    return clamp(c + c*c, vec3(0.005), vec3(1.0));
+    return clamp(c + c*c, vec3(0.001), vec3(1.75));
     return c;
 }
 #else
@@ -105,7 +109,7 @@ float Scan(vec2 pos, float off, float mul = 1.0) {
 // Barrel distortion of scanlines, and end of screen alpha.
 vec2 barrelDistortion(vec2 uv) {
     uv = uv * 2.0 - 1.0;    
-    uv *= vec2(1.0 + (uv.y * uv.y) * warp.x, 1.0 + (uv.x * uv.x) * warp.y);
+    uv *= vec2(1.0 + (uv.y * uv.y) * uBarrelDistortion.x, 1.0 + (uv.x * uv.x) * uBarrelDistortion.y);
     return uv * 0.5 + 0.5;
 }
 
@@ -163,21 +167,6 @@ vec3 Tri(vec2 uv) {
     float wc=Scan(scan_uv, 1.0 + scan_off, beamEnergyC);
 
     return (a*wa+b*wb+c*wc) * overdrive;
-
-// Slower and no visual difference
-/* 
-    vec3 a=Horz3(warp_uv,-2.0);
-    vec3 b=Horz5(warp_uv,-1.0);
-    vec3 c=Horz7(warp_uv, 0.0);
-    vec3 d=Horz5(warp_uv, 1.0);
-    vec3 e=Horz3(warp_uv, 2.0);
-    float wa=Scan(warp_uv,-2.0);
-    float wb=Scan(warp_uv,-1.0);
-    float wc=Scan(warp_uv, 0.0);
-    float wd=Scan(warp_uv, 1.0);
-    float we=Scan(warp_uv, 2.0);
-    return (a*wa+b*wb+c*wc+d*wd+e*we)*overdrive;
-*/
 }
 
 vec3 Mask(vec2 uv) {
@@ -257,5 +246,5 @@ void main() {
 
     fragColor.rgb = color * uTintColor * Mask(vTexCoord.xy * uOutResolution);
     fragColor.a = 1.0;  
-    fragColor.rgb = ToSrgb(fragColor.rgb) * vignette(vTexCoord, 3.0) * 1.1;
+    fragColor.rgb = ToSrgb(fragColor.rgb) * vignette(vTexCoord, 3.0);
 }

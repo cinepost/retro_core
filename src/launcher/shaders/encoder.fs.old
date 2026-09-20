@@ -1,0 +1,189 @@
+#version 330 core
+
+#pragma parameter bool uBypass "Bypass" 0 0 1
+#pragma parameter float uNoiseLevel "Transmission Noise" 0.1 0.0 1.0
+
+#pragma parameter float uSrcFilterWidth "Low-Pass Width" 1.0 0.1 5.0
+#pragma parameter float uSrcPeakScale "Low-Pass Peak" 3.0 0.1 10.0
+
+in vec2 vTexCoord;
+out vec4 fragColor;
+
+uniform sampler2D uInputTex;
+
+uniform bool   uBypass;
+uniform float  uRandom;
+uniform float  uNoiseLevel;
+uniform int    uFrameCount;
+
+uniform float uSrcFilterWidth;  // Standard deviation (sigma) of the Gaussian
+uniform float uSrcPeakScale;    // Scale factor for the central peak weight
+
+
+uniform uint   uConnType;      // 0=RF, 1=Composite, 2=Component, 3=VGA
+uniform uint   uStandard;      // 0=NTSC, 1=PAL
+uniform int    uSyncEnabled;   // 1=inject sync pulses
+uniform float  uSyncLevel;     // -0.3 to 0.0 (sync tip)
+uniform int    uScandouble;    // Applies only to VGA/HDMI modes
+uniform float  uInW, uInH;
+uniform float  uOutW, uOutH;
+uniform float  uEncW, uEncH;
+
+#include "common.glsl"
+#include "sampling.glsl"
+
+vec3 rgb2xyz(vec3 c) {
+    if(uStandard == 0u) {
+        // NTSC
+        return RGB_to_YUV * c;
+    }
+
+    // PAL
+    return RGB_to_YIQ * c;
+}
+
+void main() {
+    float x = vTexCoord.x * uEncW;
+    float y = vTexCoord.y * uEncH;
+    int line = int(floor(y));
+
+    if(uBypass) {
+        fragColor.rgb = vec3(sampleScanlineLinear(uInputTex, vTexCoord.x, line, vec2(uInW, uInH)).rgb);
+        return;
+    } 
+
+    if(uConnType == VGA) {
+        // VGA mode
+        if(uScandouble == 1) {
+            fragColor = sampleScanlineHann(uInputTex, vTexCoord.x, int(floor(y * 0.5)), vec2(uInW, uInH));
+            return;
+        } else {
+            fragColor = vec4(textureHannRGB(uInputTex, vTexCoord, vec2(uInW, uInH)), 1.0);
+            return;
+        }
+    }
+
+    // Pseudorandom high-frequency signal noise
+    float signal_noise_random = (rand(vTexCoord + vec2(uRandom, -uRandom)) - 0.5);
+    float signal_noise = 0.0f;
+
+    if(uConnType == COMPONENT) {
+        // COMPONENT mode
+        float dynamicSeedU = float(uFrameCount) * 0.05; // dynamic seed for pseudorandom rolling noise 
+        float dynamicSeedV = float(uFrameCount + uRandom) * 0.05; // dynamic seed for pseudorandom rolling noise 
+        float chromaNoiseU = rand(vTexCoord * 0.1 + vec2(dynamicSeedU, -dynamicSeedU)) - 0.5;
+        float chromaNoiseV = rand(vTexCoord * 0.2 + vec2(dynamicSeedV, -dynamicSeedV)) - 0.5;
+
+        vec3 component_signal = rgb2xyz(sampleScanlineLinear(uInputTex, vTexCoord.x, line, vec2(uInW, uInH)).rgb);
+
+        component_signal.x += signal_noise_random * uNoiseLevel * 0.3;
+        component_signal.y += chromaNoiseU * uNoiseLevel * 0.2 + signal_noise_random * uNoiseLevel * 0.1;
+        component_signal.z += chromaNoiseV * uNoiseLevel * 0.2 + signal_noise_random * uNoiseLevel * 0.1;
+
+        fragColor = vec4(component_signal, 1.0);
+        return;
+    }
+
+    float is_odd = mod(line, 2.0) > 0.5 ? 1.0 : 0.0;
+
+    // Dynamic bandwidth scaling (luma)
+    float lumaBW = uStandard == 0u ? 4.2 : 5.0;
+    float sigmaY = clamp(lumaBW * (uEncW / 1000000.0) / 2.5, 0.5, uEncW/2.0);
+
+    // 7-tap horizontal Gaussian filter
+    float Y=0.0, Cb=0.0, Cr=0.0, wSum=0.0;
+    for(int i=-3; i<=3; i++) {
+        float dx = float(i) / uOutW; //uInW;
+        vec2 uv = clamp(vTexCoord + vec2(dx, 0.0), vec2(0.0), vec2(1.0));
+
+        vec3 yc = rgb2xyz(sampleScanlineLinear(uInputTex, uv.x, line, vec2(uInW, uInH)).rgb);
+        
+        float w = exp(-0.5 * (dx * uInW / sigmaY) * (dx * uInW / sigmaY));
+        Y += yc.r * w; Cb += yc.g * w; Cr += yc.b * w; wSum += w;
+    }
+    Y /= wSum; Cb /= wSum; Cr /= wSum;
+
+    // FIXED: Physically accurate phase (cycles per line × normalized x)
+    float cycles_per_line = (uStandard == 0u ? 227.5 : 283.752);
+    float phase = 2.0 * 3.14159265358979 * cycles_per_line * vTexCoord.x;
+    
+    // PAL: 180° phase alternation on odd lines
+    if(uStandard == 1u) phase += mod(line, 2.0) * 3.14159265358979;
+
+    // Quadrature modulation
+    float chroma = Cb * sin(phase) + Cr * cos(phase);
+    float signal = clamp(Y + chroma, 0.0, 1.0);
+
+    // Sync injection (fixed step syntax)
+    float h_sync_ratio = (uStandard == 0u) ? 0.060 : 0.075;
+    float is_h_sync = 1.0 - step(h_sync_ratio * uEncW, x);
+    
+    float v_sync_top = (uStandard == 0u) ? 10.0 : 16.0;
+    float v_sync_bot = (uStandard == 0u) ? 9.0 : 15.0;
+    float is_v_sync = (1.0 - step(v_sync_top, y)) + step(uEncH - v_sync_bot, y);
+    
+    float sync_mask = max(is_h_sync, is_v_sync);
+
+    if(uSyncEnabled == 1 && sync_mask > 0.0) {
+        signal = uSyncLevel;
+        chroma = 0.0; // Blank chroma during retrace
+    }
+
+    // Inject high-frequency white noise directly into the analog carrier wave
+    float dynamicSeed = float(uFrameCount) * 0.05; // dynamic seed for pseudorandom rolling noise 
+    float signal_noise_rolling = (rand(vTexCoord + vec2(dynamicSeed, -dynamicSeed)) - 0.5);
+    signal_noise = signal_noise_random * 0.6666 + signal_noise_rolling * 0.3333;
+    signal += signal_noise * uNoiseLevel;
+
+    fragColor = vec4(signal, 0.0, 0.0, 1.0);
+
+    if(vTexCoord.y > 0.25) {
+        float srcStepX = 1.0 / uInW;
+
+        vec3 filteredRGB = vec3(0.0);
+        float totalWeight = 0.0;
+
+        float currentX = vTexCoord.x * uEncW;
+
+        for (int i = -2; i <= 2; i++) {
+            float offset = float(i) * srcStepX;
+            float sampleCoord = vTexCoord.x + offset;
+
+            vec3 rawRGB = sampleScanlineLinear(uInputTex, sampleCoord, line, vec2(uInW, uInH)).rgb;
+
+            float dist = abs(float(i));
+            float weight = exp(-0.5 * (dist * dist) / (uSrcFilterWidth * uSrcFilterWidth));
+            // Correction: Use u_srcFilterWidth variable here
+            
+            // Apply tweakable central peak scale modifier
+            if (i == 0) {
+                weight *= uSrcPeakScale;
+            }
+            
+            filteredRGB += rawRGB * weight;
+            totalWeight += weight;
+        }
+
+        filteredRGB /= totalWeight;//max(totalWeight, 0.0001);
+        vec3 yiq = rgb2xyz(filteredRGB);
+
+        //vec3 rgb = sampleScanlineLinear(uInputTex, vTexCoord.x, line, vec2(uInW, uInH)).rgb * 0.75;
+        //rgb += sampleScanlineLinear(uInputTex, vTexCoord.x + srcStepX, line, vec2(uInW, uInH)).rgb * 0.125;
+        //rgb += sampleScanlineLinear(uInputTex, vTexCoord.x - srcStepX, line, vec2(uInW, uInH)).rgb * 0.125;
+        //vec3 yiq = rgb2xyz(rgb);
+        
+        //vec3 yiq = rgb2xyz(sampleScanlineLinear(uInputTex, vTexCoord.x, line, vec2(uInW, uInH)).rgb);
+
+        float cyclesPerLine = 256.5;//227.5; 
+        float radiansPerPixel = (cyclesPerLine * 2.0 * 3.14159265) / uEncW;
+    
+        float framePhaseShift = mod(float(uFrameCount), 2.0) * 3.14159265;
+        float linePhaseShift  = mod(line, 2.0) * 3.14159265;
+
+        float angle = (currentX * radiansPerPixel) + framePhaseShift + linePhaseShift;
+        float compositeSignal = yiq.x + yiq.y * sin(angle) + yiq.z * cos(angle);
+        compositeSignal += signal_noise * uNoiseLevel;
+
+        fragColor = vec4(compositeSignal, 0.0, 0.0, 1.0);
+    }
+}

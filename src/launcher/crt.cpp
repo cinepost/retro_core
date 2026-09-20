@@ -1,7 +1,7 @@
 #include "crt.h"
 
 #include <iostream>
-
+#include <random>
 
 namespace RetroLauncher {
 
@@ -20,7 +20,7 @@ CRT::CRT(): Display(),
 }
 
 void CRT::setStandard(Standard standard) {
-    standard = static_cast<Standard>((uint8_t)standard % (uint8_t)Standard::COUNT);
+    standard = static_cast<Standard>((uint32_t)standard % (uint32_t)Standard::COUNT);
     if(mStandard == standard) return;
     mStandard = standard;
 
@@ -50,11 +50,9 @@ void CRT::prepareEncoderTexture(uint16_t core_tex_width, uint16_t core_tex_heigh
 
     switch(mMode) {
         case Mode::RF:
-            encoded_tex_width = mCoreTextureWidth * 3;
-            encoded_tex_height = mCoreTextureHeight;
-            break;
         case Mode::COMPOSITE:
-            encoded_tex_width = mCoreTextureWidth * 3;
+        case Mode::S_VIDEO:
+            encoded_tex_width = mCoreTextureWidth * 4;
             encoded_tex_height = mCoreTextureHeight;
             break;
         case Mode::COMPONENT:
@@ -63,14 +61,26 @@ void CRT::prepareEncoderTexture(uint16_t core_tex_width, uint16_t core_tex_heigh
             break;
         case Mode::VGA:
         default:
-            encoded_tex_width = mCoreTextureWidth * 3;
+            encoded_tex_width = mCoreTextureWidth * 2;
             encoded_tex_height = mCoreTextureHeight * 2;
             break;
     }
 
-    mpOSD->resize(core_tex_width, encoded_tex_height);
+    mpOSD->resize(mpOSD->getWidth(), encoded_tex_height); // only vertical resize. keep OSD width fixed.
 
-    auto encoded_tex_format = (mMode == Mode::RF || mMode == Mode::COMPOSITE) ? GL_R16F : GL_RGB16F;
+    auto encoded_tex_format = GL_RGB16F;
+    switch(mMode) {
+        case Mode::RF:
+        case Mode::COMPOSITE:
+            encoded_tex_format = GL_R16F;
+            break;
+        case Mode::S_VIDEO:
+            encoded_tex_format = GL_RG16F;
+            break;
+        default:
+            encoded_tex_format = GL_RGB16F;
+            break;
+    }
 
     if(mEncodedTextureWidth == encoded_tex_width && mEncodedTextureHeight == encoded_tex_height && mEncodedTextureFormat == encoded_tex_format) return;
 
@@ -97,7 +107,7 @@ void CRT::prepareEncoderTexture(uint16_t core_tex_width, uint16_t core_tex_heigh
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     // Decoder rgb texture
-    mDecodedTextureWidth  = 720;
+    mDecodedTextureWidth  = mMode == Mode::VGA ? 1024 : 2048;
     mDecodedTextureHeight = encoded_tex_height;
 
     glDeleteTextures(1, &mDecodedTexture);
@@ -168,29 +178,45 @@ bool CRT::initImpl(uint16_t win_w, uint16_t win_h) {
 
     mpOSD->setText(osd_elements);
 
+    static const Shader::DefinesList sStandardTypeDefinesList = {
+        {"NTSC",      "0u"},
+        {"PAL",       "1u"}
+    };
+
+    static const Shader::DefinesList sConnectionTypeDefinesList = {
+        {"RF",        "0u"},
+        {"COMPOSITE", "1u"},
+        {"S_VIDEO",   "2u"},
+        {"COMPONENT", "3u"},
+        {"VGA",       "4u"}
+    };
+
+    mEncoderShader.addDefines(sStandardTypeDefinesList);
+    mEncoderShader.addDefines(sConnectionTypeDefinesList);
     if(!mEncoderShader.init("shaders/quad.vs", "shaders/encoder.fs")) {
         return false;
     }
     mEncoderShader.linkShaderParameter("uConnType", reinterpret_cast<uint32_t&>(mMode), 0, (uint32_t)Mode::COUNT - 1);
     mEncoderShader.linkShaderParameter("uStandard", reinterpret_cast<uint32_t&>(mStandard), 0, (uint32_t)Standard::COUNT - 1);
 
+    mDecoderShader.addDefines(sStandardTypeDefinesList);
+    mDecoderShader.addDefines(sConnectionTypeDefinesList);
     if(!mDecoderShader.init("shaders/quad.vs", "shaders/decoder.fs")) {
         return false;
     }
     mDecoderShader.linkShaderParameter("uConnType", reinterpret_cast<uint32_t&>(mMode), 0, (uint32_t)Mode::COUNT - 1);
     mDecoderShader.linkShaderParameter("uStandard", reinterpret_cast<uint32_t&>(mStandard), 0, (uint32_t)Standard::COUNT - 1);
-    
+
     if(!mHistoryShader.init("shaders/quad.vs", "shaders/history.fs")) {
         return false;
     }
     
+    mDisplayShader.addDefines(sStandardTypeDefinesList);
+    mDisplayShader.addDefines(sConnectionTypeDefinesList);
     if(!mDisplayShader.init("shaders/quad.vs", "shaders/display.fs")) {
         return false;
     }
-
-    mEncoderShader.addDefine("TEST_RED", "1.0");
-    mEncoderShader.addDefine("TEST_GREEN", "0.5");
-    mEncoderShader.addDefine("TEST_BLUE", "0.1");
+    mDisplayShader.linkShaderParameter("uConnType", reinterpret_cast<uint32_t&>(mMode), 0, (uint32_t)Mode::COUNT - 1);
 
     // Create intermediate frame buffers for Pass-2 input streams
     glGenFramebuffers(1, &mEncoderFBO);
@@ -276,9 +302,14 @@ bool CRT::processImpl(GLuint core_texture, uint16_t core_tex_width, uint16_t cor
     glViewport(0, 0, mEncodedTextureWidth, mEncodedTextureHeight);
     mEncoderShader.use();
 
+    static std::random_device rd; 
+    static std::mt19937 gen(rd()); 
+    static std::uniform_real_distribution<float> dis(0.0f, 1.0f);
+
+    mEncoderShader.setFloat("uRandom", dis(gen));
     mEncoderShader.setInt("uSyncEnabled", 0);
     mEncoderShader.setFloat("uSyncLevel", 0.0);
-    
+    mEncoderShader.setInt("uFrameCount", (uint32_t)getFrontendFrameCount());
     mEncoderShader.setBool("uScandouble", mMode == Mode::VGA ? 1 : 0);
     mEncoderShader.setFloat("uInW", (float)mCoreTextureWidth);
     mEncoderShader.setFloat("uInH", (float)mCoreTextureHeight);
@@ -314,28 +345,20 @@ bool CRT::processImpl(GLuint core_texture, uint16_t core_tex_width, uint16_t cor
     mDecoderShader.setFloat("uOutW", (float)mDecodedTextureWidth);
     mDecoderShader.setFloat("uOutH", (float)mDecodedTextureWidth);
 
-    mDecoderShader.setInt("uFrameCount", getFrameCount());
+    mDecoderShader.setInt("uFrameCount", getFrontendFrameCount());
 
     mDecoderShader.pushTexture("uInputTex", mEncodedTexture, 0);
 
     glBindVertexArray(mVAO); 
     glDrawArrays(GL_QUADS, 0, 4);
 
-    // ====================================// History: Phosphor Decay Trailing Logic (Low-Res Buffer Ring) // ==========================================
+    // ====================================// History: Phosphor Decay Trailing Logic (Ring-Buffer) // ==========================================
     glBindFramebuffer(GL_FRAMEBUFFER, mHistoryFBO[mHistoryWriteIndex]);
     glViewport(0, 0, mHistoryTextureWidth, mHistoryTextureHeight);
     mHistoryShader.use();
 
     mHistoryShader.pushTexture("uDecodedTexture", mDecodedTexture, 0);
     mHistoryShader.pushTexture("uHistoryTexture", mHistoryTexture[mHistoryReadIndex], 1);
-
-    if (mMode == Mode::VGA) { 
-        // VGA fast phosphor decay profile
-//        mHistoryShader.setVec3("uDecayCoefficients", 0.02f, 0.01f, 0.005f); // B22 Phosphor Decay Coefficients 
-    } else { 
-        // Slow consumer television tube profile
-//        mHistoryShader.setVec3("uDecayCoefficients", 0.15f, 0.07f, 0.03f); // P22 Phosphor Decay Coefficients 
-    }
 
     glBindVertexArray(mVAO); 
     glDrawArrays(GL_QUADS, 0, 4);
@@ -344,8 +367,6 @@ bool CRT::processImpl(GLuint core_texture, uint16_t core_tex_width, uint16_t cor
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, mWindowWidth, mWindowHeight);
     mDisplayShader.use();
-
-    mDisplayShader.setInt("uMode", (GLuint)mMode);
     mDisplayShader.setVec2("uVideoResolution", (float)mHistoryTextureWidth, (float)mHistoryTextureHeight);
     mDisplayShader.setVec2("uOSDResolution", mpOSD->getWidth(), mpOSD->getHeight());
     mDisplayShader.setVec2("uOutResolution", (float)mWindowWidth, (float)mWindowHeight);
@@ -357,7 +378,12 @@ bool CRT::processImpl(GLuint core_texture, uint16_t core_tex_width, uint16_t cor
     glBindVertexArray(mVAO); 
     glDrawArrays(GL_QUADS, 0, 4);
 
+    // restore state for legacy render
     glEnable(currentDepthTestState);
+    glUseProgram(0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindVertexArray(0);
 
     mHistoryReadIndex = 1 - mHistoryReadIndex;
     mHistoryWriteIndex = 1 - mHistoryWriteIndex; 
@@ -382,44 +408,68 @@ void CRT::drawGuiImpl() {
         &mDisplayShader
     };
 
-    for(Shader* pShader: sShaders) {
-        ImGui::PushID(this);
-        if (ImGui::BeginTabItem(pShader->getName().c_str())) {
+    uint32_t selected_standard_idx = (uint32_t)getStandard();
+    uint32_t mode_standard_idx = (uint32_t)getMode();
 
-            pShader->drawUI();        
-            ImGui::EndTabItem();
+    if (ImGui::BeginCombo("Standard##dropdown", to_string(mStandard).c_str())) {
+        for (uint32_t i = 0; i < (uint32_t)Standard::COUNT; ++i) {
+            const bool is_selected = ((uint32_t)getStandard() == i);
+            
+            // Render each item as a Selectable
+            if (ImGui::Selectable(to_string(static_cast<Standard>(i)).c_str(), is_selected)) {
+                selected_standard_idx = i;
+            }
+
+            if (is_selected) {
+                ImGui::SetItemDefaultFocus();
+            }
         }
-        ImGui::PopID();
+        ImGui::EndCombo(); // Must be called if BeginCombo returns true
+    }
+
+    if (ImGui::BeginCombo("Connection##dropdown", to_string(mMode).c_str())) {
+        for (uint32_t i = 0; i < (uint32_t)Mode::COUNT; ++i) {
+            const bool is_selected = ((uint32_t)getMode() == i);
+            
+            // Render each item as a Selectable
+            if (ImGui::Selectable(to_string(static_cast<Mode>(i)).c_str(), is_selected)) {
+                mode_standard_idx = i;
+            }
+
+            if (is_selected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo(); // Must be called if BeginCombo returns true
+    }
+
+    if(ImGui::BeginTabBar(getDisplayName().c_str())) {
+
+        for(Shader* pShader: sShaders) {
+            ImGui::PushID(this);
+            if (ImGui::BeginTabItem(pShader->getName().c_str())) {
+
+                pShader->drawUI();        
+                ImGui::EndTabItem();
+            }
+            ImGui::PopID();
+        }
+
+        ImGui::EndTabBar();
     }
 
     mpOSD->drawGui();
 }
 
 std::string CRT::getStandardString() const {
-    if(mStandard == Standard::NTSC) return "NTSC";
-    return "PAL";
+    return to_string(mStandard);
 }
 
 std::string CRT::getModeString() const {
-    std::string str = "";
-    switch(mMode) {
+    std::string str = to_string(mMode);
+    if (mMode == CRT::Mode::VGA) return str;
 
-        case Mode::VGA:
-            return "VGA";
-        case Mode::COMPONENT:
-            str = "COMPONENT";
-            break;
-        case Mode::COMPOSITE:
-            str = "COMPOSITE";
-            break;
-        case Mode::RF:
-        default:
-            str = "RF";
-            break;
-    }
-
-    str += " " + getStandardString();
-    return str;
+    return str + " " + to_string(mStandard);
 }
 
 }  // namespace RetroLauncher

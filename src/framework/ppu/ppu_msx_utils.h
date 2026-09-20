@@ -19,7 +19,10 @@ namespace MSX {
     )
 
 template<typename T>
-[[nodiscard]] std::vector<T> loadTilesFromIndexedPNG(const std::string& filename, const Palette<16>* pRefPalette = nullptr, bool skip_empty_tiles = true);
+[[nodiscard]] std::vector<T> loadTilesFromIndexedPNG(const std::string& filename, const Palette<16>* pRefPalette = nullptr, bool skip_empty_tiles = false);
+
+template<typename T>
+[[nodiscard]] std::vector<T> loadTilesFromIndexedPNG(const uint8_t* pData, size_t data_size, const Palette<16>* pRefPalette = nullptr, bool skip_empty_tiles = false);
 
 }  // namespace MSX
 }  // namespace Utils
@@ -27,3 +30,19 @@ template<typename T>
 }  // namespace RetroCore
 
 #endif  // __RETRO_CORE_FRAMEWORK_PPU_PPU_UTILS_H
+
+/*
+    16x16 sprite pattern data memory layout
+
+        Left 8 Pixels   Right 8 Pixels
+      +---------------+----------------+
+Row  0| Block 0       | Block 2        |
+  to  | (Top-Left)    | (Top-Right)    |
+Row  7| Bytes 0 to 7  | Bytes 16 to 23 |
+      +---------------+----------------+
+Row  8| Block 1       | Block 3        |
+  to  | (Bottom-Left) | (Bottom-Right) |
+Row 15| Bytes 8 to 15 | Bytes 24 to 31 |
+      +---------------+----------------+
+
+*/

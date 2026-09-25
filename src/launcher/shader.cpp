@@ -332,7 +332,7 @@ std::string Shader::loadShaderSourceWithIncludes(const std::string& providedPath
 }
 
 void Shader::injectDefines(std::string& source, const DefinesList& defines, const std::string& shaderPath) {
-    if(defines.empty()) return;
+    if(source.empty() || defines.empty()) return;
 
     size_t versionPos = source.find("#version");
     if (versionPos == std::string::npos) {

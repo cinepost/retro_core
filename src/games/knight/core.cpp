@@ -147,10 +147,6 @@ void retro_reset(void) {
 
 }
 
-static void render(void) {
-   gGame.renderFrame();
-}
-
 static void update_refresh_rate(double new_fps) {
    static double current_fps = 0.0;
    

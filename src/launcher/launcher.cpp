@@ -872,6 +872,8 @@ int main(int argc, char *argv[]) {
     target_spec.samples  = 1024;         // Low latency hardware chunk partition size
     target_spec.callback = nullptr;      // Crucial: Set to null to explicitly use the Queue API
 
+    std::cout << "Core requested audio sample rate is " << target_spec.freq << std::endl;
+
     g_audio_device = SDL_OpenAudioDevice(nullptr, 0, &target_spec, nullptr, 0);
     if (g_audio_device == 0) {
         std::cerr << "Audio device fallback failure: " << SDL_GetError() << std::endl;

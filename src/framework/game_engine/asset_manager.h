@@ -22,6 +22,14 @@ class AssetManager {
             bool isDiskLoaded = false; // Tracks if memory is owned by a unique_ptr
 
             [[nodiscard]] inline bool isValid() const noexcept { return pData != nullptr && sizeInBytes > 0;}
+
+            std::string getDataAsString() const {
+                if (!pData || sizeInBytes == 0) {
+                    return "";
+                }
+
+                return std::string(reinterpret_cast<const char*>(pData), sizeInBytes);
+            }
         };
 
         AssetManager() = default;

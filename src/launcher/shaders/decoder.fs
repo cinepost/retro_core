@@ -90,7 +90,7 @@ void main() {
 
     float filterWidth = (uConnType == S_VIDEO) ? uFilterWidth * 0.85 : uFilterWidth;
 
-    float filterWidthY = filterWidth * scaleRatio;
+    float filterWidthY = filterWidth * scaleRatio * ((uConnType == RF) ? 1.2 : 1.0);;
     float filterWidthI = filterWidth * scaleRatio * ((uConnType == S_VIDEO) ? 2.5 : 2.8);
     float filterWidthQ = filterWidth * scaleRatio * ((uConnType == S_VIDEO) ? 2.5 : 5.6);
 
@@ -115,7 +115,7 @@ void main() {
         float rawY = (uConnType == S_VIDEO) ? signal.g : signal.r;
 
         if(uConnType == RF) {
-            float shadow_luma = sampleScanlineLinear(uEncTex, sampleTexCoord.x - 0.0055, line, vec2(uEncW, uEncH)).r;
+            float shadow_luma = sampleScanlineLinear(uEncTex, sampleTexCoord.x - 0.0045, line, vec2(uEncW, uEncH)).r;
             rawY = mix(rawY, shadow_luma, -0.3);
         }
 

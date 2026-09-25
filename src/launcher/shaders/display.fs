@@ -3,7 +3,6 @@
 #pragma parameter vec3 uTintColor "Tint Color" 1.0 1.0 1.0  0.0 0.0 0.0  1.0 1.0 1.0
 #pragma parameter vec2 uPicShift "Picture Shift" 0.0 0.0  -1.0 -1.0  1.0 1.0
 
-
 #pragma parameter vec2 uBarrelDistortion "Barrel Distortion" 0.0075 0.01  0.0 0.0  0.2 0.2
 
 #pragma parameter float uEdgeDefocus "Edge Defocus" 0.05  0.0  0.1

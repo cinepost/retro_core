@@ -49,14 +49,14 @@ class PPU_BASE {
 				virtual void draw(uint8_t* pFrameData, uint32_t stride_bytes) = 0;
 		};
 
-		void pushDebugDrawable(std::unique_ptr<DebugDrawable> pDrawable) { mDebugDrawablesList.push_back(std::move(pDrawable)); }
+		void pushDebugDrawable(std::unique_ptr<DebugDrawable> pDrawable) const { mDebugDrawablesList.push_back(std::move(pDrawable)); }
 		void clearDebugDrawables() { mDebugDrawablesList.clear(); }
 		void toggleDebugDrawablesState() { mDebugDrawablesEnabled = !mDebugDrawablesEnabled; }
 
 	protected:
 		DebugRegisters mDebugRegisters;
 
-		std::vector<std::unique_ptr<DebugDrawable>> mDebugDrawablesList;
+		mutable std::vector<std::unique_ptr<DebugDrawable>> mDebugDrawablesList;
 		bool mDebugDrawablesEnabled = false;
 };
 

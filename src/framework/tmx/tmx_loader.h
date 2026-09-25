@@ -9,11 +9,25 @@
 #include <map>
 #include <algorithm>
 
+#include "framework/game_engine/asset_manager.h"
+
 namespace RetroCore {
 
 namespace tmx {
 
-using PropertyMap = std::map<std::string, std::string>;
+class PropertyMap: public std::map<std::string, std::string> {
+    public:
+        PropertyMap() = default;
+
+        const std::string& getAsString(const std::string& key) const {
+            static const std::string sEmptyString;
+            auto it = find(key);
+            if(it == end()) {
+                return sEmptyString;
+            }
+            return it->second;
+        }
+};
 
 struct Tileset {
     std::string name;
@@ -31,6 +45,16 @@ struct Tileset {
 
     PropertyMap properties;                          // Global tileset properties
     std::map<unsigned int, PropertyMap> tileProperties; // Tile-specific properties (Key: Local Tile ID)
+
+    const PropertyMap* getPropertiesForGid(unsigned int gid) const {
+        if(gid < firstGid) return nullptr;
+        auto it = tileProperties.find(gid - firstGid);
+        if(it != tileProperties.end()) {
+            return &it->second;
+        }
+        return nullptr;
+    }
+
 };
 
 struct Layer {
@@ -54,6 +78,7 @@ struct Object {
 };
 
 struct ObjectLayer {
+    int id = 0;
     std::string name;
     std::vector<Object> objects;
     PropertyMap properties;
@@ -110,6 +135,14 @@ namespace internal {
         buffer << file.rdbuf();
         
         return buffer.str();
+    }
+
+    inline std::string load_file_string_from_asset_manager(const std::string& path, const AssetManager& assetManager) {
+        const Asset& asset = assetManager.getAsset(path);
+        if(!asset.isValid()) {
+            std::cerr << "Error loading file " << path << std::endl;
+        }
+        return asset.getDataAsString();
     }
 
     inline PropertyMap parse_properties(const std::string& block, size_t startPos, size_t endPos) {
@@ -172,7 +205,21 @@ namespace internal {
         while ((tilePos = tagBody.find("<tile ", tilePos)) != std::string::npos) {
             size_t tileTagEnd = tagBody.find(">", tilePos);
             size_t tileBlockEnd = tagBody.find("</tile>", tilePos);
-            if (tileTagEnd == std::string::npos || tileBlockEnd == std::string::npos) break;
+            if (tileTagEnd == std::string::npos || tileBlockEnd == std::string::npos) {
+                // prase self closing tile
+                tileTagEnd = tagBody.find("/>", tilePos);
+                if(tileTagEnd == std::string::npos) break;
+                tilePos += 6;
+                std::string tileTag = tagBody.substr(tilePos, tileTagEnd - tilePos);
+
+                unsigned int localId = std::stoul(get_attr(tileTag, "id"));
+                std::string typeStr = get_attr(tileTag, "type");
+                PropertyMap& tileProperties = ts.tileProperties[localId];
+                tileProperties["type"] = typeStr;
+
+                tilePos = tileTagEnd + 2;
+                continue;
+            }
 
             std::string tileTag = tagBody.substr(tilePos, tileTagEnd - tilePos);
             unsigned int localId = std::stoul(get_attr(tileTag, "id"));
@@ -191,8 +238,8 @@ namespace internal {
 
 class Loader {
     public:
-        static bool loadMap(const std::string& filePath, Map& outMap) {
-            std::string content = internal::load_file_string(filePath);
+        static bool loadMap(const std::string& filePath, Map& outMap, const AssetManager* pAssetManager = nullptr) {
+            std::string content = pAssetManager ? internal::load_file_string_from_asset_manager(filePath, *pAssetManager) : internal::load_file_string(filePath);
             if (content.empty()) return false;
 
             std::string baseDir = "";
@@ -226,7 +273,7 @@ class Loader {
 
                 if (!extSource.empty()) {
                     std::string tsxPath = baseDir + extSource;
-                    std::string tsxContent = internal::load_file_string(tsxPath);
+                    std::string tsxContent = pAssetManager ? internal::load_file_string_from_asset_manager(tsxPath, *pAssetManager) : internal::load_file_string(tsxPath);
                     if (!tsxContent.empty()) {
                         size_t tsxStart = tsxContent.find("<tileset");
                         size_t tsxEnd = tsxContent.find("</tileset>");
@@ -276,7 +323,7 @@ class Loader {
                     dataStart += 21;
                 }
 
-                size_t dataEnd = content.find("", dataStart);
+                size_t dataEnd = content.find("</data>", dataStart);
                 std::string csvData = content.substr(dataStart, dataEnd - dataStart);
                 std::stringstream ss(csvData);
                 std::string tileId;
@@ -297,13 +344,17 @@ class Loader {
             size_t objGroupPos = 0;
             while ((objGroupPos = content.find("<objectgroup", objGroupPos)) != std::string::npos) {
                 size_t openTagEnd = content.find(">", objGroupPos);
-                size_t groupEnd = content.find("", objGroupPos);
+                size_t groupEnd = content.find("</objectgroup>", objGroupPos);
                 if (groupEnd == std::string::npos) break;
 
                 std::string groupTag = content.substr(objGroupPos, openTagEnd - objGroupPos);
                 ObjectLayer objLayer;
+                objLayer.id = std::stoi(internal::get_attr(groupTag, "id"));
                 objLayer.name = internal::get_attr(groupTag, "name");
-                std::string groupBody = content.substr(objGroupPos, groupEnd - objGroupPos);
+                
+                openTagEnd += 1;
+                std::string groupBody = content.substr(openTagEnd, groupEnd - openTagEnd);
+
                 objLayer.properties = internal::parse_properties(groupBody, 0, groupBody.length());
                 size_t objPos = 0;
 
@@ -315,7 +366,8 @@ class Loader {
                     if (stepPos == std::string::npos) break;
 
                     std::string objectTag = groupBody.substr(objPos, objTagEnd - objPos);
-                    Object obj;obj.id = std::stoi(internal::get_attr(objectTag, "id"));
+                    Object obj;
+                    obj.id = std::stoi(internal::get_attr(objectTag, "id"));
                     obj.name = internal::get_attr(objectTag, "name");
                     obj.type = internal::get_attr(objectTag, "class");
 
@@ -335,9 +387,11 @@ class Loader {
                         std::string objBody = groupBody.substr(objPos, objBlockEnd - objPos);
                         obj.properties = internal::parse_properties(objBody, 0, objBody.length());
                     }
-                    objLayer.objects.push_back(obj);objPos = stepPos + 1;
+                    objLayer.objects.push_back(obj);
+                    objPos = stepPos + 1;
                 } 
-                outMap.objectLayers.push_back(objLayer);objGroupPos = groupEnd + 1;
+                outMap.objectLayers.push_back(objLayer);
+                objGroupPos = groupEnd + 1;
             }
 
             return true;

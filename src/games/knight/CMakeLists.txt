@@ -60,15 +60,37 @@ set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets") # game asset folder
 set(BUNDLE_OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/game_assets.bundle")
 
 file(GLOB_RECURSE ASSET_FILES 
+    # maps data
+    "${ASSETS_SRC_DIR}/maps/*.tmx"
+    "${ASSETS_SRC_DIR}/maps/*.tsx"
+
+    # sprites and tiles
+    "${ASSETS_SRC_DIR}/images/level_01_tiles.png"
     "${ASSETS_SRC_DIR}/images/common_sprites.png"
 
+    # bgm
     "${ASSETS_SRC_DIR}/music/player_dying.mp3"
     
+    # sfx
+    "${ASSETS_SRC_DIR}/sfx/amikon_logo_sound.mp3"
+    "${ASSETS_SRC_DIR}/sfx/shot_arrow.mp3"
+    "${ASSETS_SRC_DIR}/sfx/extra_block_hit.mp3"
+    "${ASSETS_SRC_DIR}/sfx/extra_block_take.mp3"
+
+    # geneal
     "${ASSETS_SRC_DIR}/music/*.mp3"
     "${ASSETS_SRC_DIR}/music/*.wav"
     "${ASSETS_SRC_DIR}/music/*.ogg"
     "${ASSETS_SRC_DIR}/music/*.midi"
     "${ASSETS_SRC_DIR}/music/*.vgm"
+    "${ASSETS_SRC_DIR}/music/*.mod"
+
+    "${ASSETS_SRC_DIR}/sfx/*.mp3"
+    "${ASSETS_SRC_DIR}/sfx/*.wav"
+    "${ASSETS_SRC_DIR}/sfx/*.ogg"
+    "${ASSETS_SRC_DIR}/sfx/*.midi"
+    "${ASSETS_SRC_DIR}/sfx/*.vgm"
+    "${ASSETS_SRC_DIR}/sfx/*.mod"
 )
 
 add_custom_command(

@@ -5,7 +5,7 @@
 #include "framework/game_engine/mp3_stream.h"
 
 static const std::string sAmikonLogoFileName = "images/amikon_logo_01.png";
-static const std::string sBgmFileName = "music/amikon_logo_sound.mp3";
+static const std::string sBgmFileName = "sfx/amikon_logo_sound.mp3";
 
 namespace KnightGame {
 

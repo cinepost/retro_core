@@ -168,6 +168,37 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 			VSCREEN_12 		// Pure YJK. 19,268 simultaneous colors out of a 32,768 palette
 		};
 
+		inline static std::string to_string(const ScreenMode& mode) {
+			switch(mode) {
+				case ScreenMode::VSCREEN_1:
+					return "VSCREEN_1";
+				case ScreenMode::VSCREEN_2:
+					return "VSCREEN_2";
+				case ScreenMode::VSCREEN_3:
+					return "VSCREEN_3";
+				case ScreenMode::VSCREEN_4:
+					return "VSCREEN_4";
+				case ScreenMode::VSCREEN_5:
+					return "VSCREEN_5";
+				case ScreenMode::VSCREEN_6:
+					return "VSCREEN_6";
+				case ScreenMode::VSCREEN_7:
+					return "VSCREEN_7";
+				case ScreenMode::VSCREEN_8:
+					return "VSCREEN_8";
+				case ScreenMode::VSCREEN_10:
+					return "VSCREEN_10";
+				case ScreenMode::VSCREEN_11:
+					return "VSCREEN_11";
+				case ScreenMode::VSCREEN_12:
+					return "VSCREEN_12";
+				default:
+					assert(false && "Should not be here!");
+					return "Unknown screen";
+			}
+		}
+
+
 		enum class TextMode: uint8_t {
 			NORMAL = 0, 	// Normal density text mode
 			HIGH 			// High density text mode
@@ -307,7 +338,14 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 			return mPalette;
 		}
 
-		void writeTileIndex(uint16_t name_table_offset, uint16_t tile_index);
+		void writeTileIndex(uint16_t name_table_offset, uint16_t tile_index) {
+			uint16_t* pNameTable = reinterpret_cast<uint16_t*>(&mVRAM[getNameTableAddress()]);
+			pNameTable[name_table_offset] = tile_index;
+		}
+
+		void writeTileIndex(uint16_t name_table_offset, int tile_index) {
+			writeTileIndex(name_table_offset, static_cast<uint16_t>(tile_index & 0x0000FFFF));
+		}
 
 		[[nodiscard]] uint8_t getCurrentSpritesExtent() const {
 			return (mSpriteSize == SpriteSize::SPRITE_8 ? 8 : 16) * (mSpritesMag ? 2 : 1);
@@ -413,8 +451,22 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 		}
 
 		// Higher level 
-		void pushTile(uint16_t tile_index, const std::array<uint8_t, 16>& fullData);
-		void pushTile(uint16_t tile_index, const PATTERN_8D_8C& tileData);
+		void pushTile(uint16_t tile_index, const std::array<uint8_t, 16>& fullData) {
+ 			pushTile(tile_index, PATTERN_8D_8C(fullData));
+		}
+
+		void pushTile(uint16_t tile_index, const PATTERN_8D_8C& tileData) {
+			if(mScreenMode != MsxPPU_BASE::ScreenMode::VSCREEN_1 && mScreenMode != MsxPPU_BASE::ScreenMode::VSCREEN_2 && mScreenMode != MsxPPU_BASE::ScreenMode::VSCREEN_4) {
+				std::cerr << "Warnging! PATTERN_8D_8C data not supported in " << to_string(mScreenMode);
+				return;
+			}
+
+			tile_index = tile_index % kMaximumPatternsCount; // wrap index around
+			const uint32_t tile_address_offset = tile_index * 8;
+
+			std::memcpy(&mVRAM[getPatternTableAddress() + tile_address_offset], tileData.tile.data(), 8);
+			std::memcpy(&mVRAM[getColorTableAddress() + tile_address_offset], tileData.color.data(), 8);
+		}
 
 		void pushTiles(const std::array<uint8_t, 16>* pTiles, size_t count, uint16_t tile_index_offset) {
 			assert(count <= (tile_index_offset + kMaximumPatternsCount));
@@ -426,9 +478,21 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 		/**
  		* Pushes 8x8px 1bpp sprite pattern into VRAM.
  		*/
-		void pushSpritePattern(uint16_t tile_index, const uint8_t* pSrc, uint8_t bytes_count /* 8 or 32 bytes of data */);
-		void pushSpritePattern(uint16_t tile_index, const std::array<uint8_t, 8>& src);
-		void pushSpritePattern(uint16_t tile_index, const std::array<uint8_t, 32>& src);
+		void pushSpritePattern(uint16_t tile_index, const uint8_t* pSrc, uint8_t bytes_count /* 8 or 32 bytes of data */) {
+			assert(bytes_count == 8 || bytes_count == 32);
+			uint8_t* pDst = &mVRAM[getSpritePatternTableAddress() + (tile_index << 3)];
+			std::memcpy(pDst, pSrc, bytes_count);
+		}
+
+
+		void pushSpritePattern(uint16_t tile_index, const std::array<uint8_t, 8>& src) {
+			pushSpritePattern(tile_index, src.data(), 8);
+		}	
+
+		void pushSpritePattern(uint16_t tile_index, const std::array<uint8_t, 32>& src) {
+			pushSpritePattern(tile_index, src.data(), 32);
+		}
+
 
 	public:
 		[[nodiscard]] static constexpr bool canPaletteBeModified(ScreenMode mode) {
@@ -578,6 +642,7 @@ class MsxPPU final: public MsxPPU_BASE {
 				case MsxPPU_BASE::ScreenMode::VSCREEN_0:
 				case MsxPPU_BASE::ScreenMode::VSCREEN_1:
 				case MsxPPU_BASE::ScreenMode::VSCREEN_2:
+					return getPatternsCountPerScreen() * 2 * 2; // 2 scneesnd of 16 bit indices
 				case MsxPPU_BASE::ScreenMode::VSCREEN_3:
 				case MsxPPU_BASE::ScreenMode::VSCREEN_4:
 					return getPatternsCountPerScreen() * 2; // 16 bit indices
@@ -596,27 +661,27 @@ class MsxPPU final: public MsxPPU_BASE {
 			static constexpr uint32_t off_screen_pages_offset = getVramPageSize() * 4;
 
 			uint32_t current_mem_offset = off_screen_pages_offset;
-			std::cout << "PatternTable address " << current_mem_offset << std::endl;
+			//std::cout << "PatternTable address " << current_mem_offset << std::endl;
 			setPatternTableAddress(current_mem_offset);
 
 			current_mem_offset += getPatternsTableSize();
-			std::cout << "NameTable address " << current_mem_offset << std::endl;
+			//std::cout << "NameTable address " << current_mem_offset << std::endl;
 			setNameTableAddress(current_mem_offset);
 
 			current_mem_offset += getNameTableSize();
-			std::cout << "ColorTable address " << current_mem_offset << std::endl;
+			//std::cout << "ColorTable address " << current_mem_offset << std::endl;
 			setColorTableAddress(current_mem_offset);
 
 			current_mem_offset += geColorTableSize();
-			std::cout << "SpritePatternTable address " << current_mem_offset << std::endl;
+			//std::cout << "SpritePatternTable address " << current_mem_offset << std::endl;
 			setSpritePatternTableAddress(current_mem_offset);
 
 			current_mem_offset += getSpritePatternsTableSize();
-			std::cout << "SpriteAttributeTable address " << current_mem_offset << std::endl;
+			//std::cout << "SpriteAttributeTable address " << current_mem_offset << std::endl;
 			setSpriteAttributeTableAddress(current_mem_offset);
 
 			current_mem_offset += getSpriteAttributeTableSize();
-			std::cout << "SpriteColorTable address " << current_mem_offset << std::endl;
+			//std::cout << "SpriteColorTable address " << current_mem_offset << std::endl;
 			setSpriteColorTableAddress(current_mem_offset);
 		}
 
@@ -714,7 +779,7 @@ class MsxPPU final: public MsxPPU_BASE {
 
 	public:
 		// shorts for debug drawings
-		void drawDebugRect(int16_t x, int16_t y, uint16_t w, uint16_t h, bool outline) {
+		void drawDebugRect(int16_t x, int16_t y, uint16_t w, uint16_t h, bool outline) const {
 			mDebugDrawablesList.push_back(std::make_unique<DebugDrawableRect>(x, y, w, h, outline));
 		}
 };
@@ -722,37 +787,5 @@ class MsxPPU final: public MsxPPU_BASE {
 }  // namespace PPU
 
 }  // namespace RetroCore
-
-inline std::string to_string(const RetroCore::PPU::MsxPPU_BASE::ScreenMode& mode) {
-	using ScreenMode = RetroCore::PPU::MsxPPU_BASE::ScreenMode;
-
-	switch(mode) {
-		case ScreenMode::VSCREEN_1:
-			return "VSCREEN_1";
-		case ScreenMode::VSCREEN_2:
-			return "VSCREEN_2";
-		case ScreenMode::VSCREEN_3:
-			return "VSCREEN_3";
-		case ScreenMode::VSCREEN_4:
-			return "VSCREEN_4";
-		case ScreenMode::VSCREEN_5:
-			return "VSCREEN_5";
-		case ScreenMode::VSCREEN_6:
-			return "VSCREEN_6";
-		case ScreenMode::VSCREEN_7:
-			return "VSCREEN_7";
-		case ScreenMode::VSCREEN_8:
-			return "VSCREEN_8";
-		case ScreenMode::VSCREEN_10:
-			return "VSCREEN_10";
-		case ScreenMode::VSCREEN_11:
-			return "VSCREEN_11";
-		case ScreenMode::VSCREEN_12:
-			return "VSCREEN_12";
-		default:
-			assert(false && "Should not be here!");
-			return "Unknown screen";
-	}
-}
 
 #endif  // __RETRO_CORE_FRAMEWORK_PPU_PPU_MSX_H

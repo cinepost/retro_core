@@ -59,7 +59,7 @@ class EngineCore {
             mSamplesPerFrame = (44100.0 / mTargetFps) * 2; 
             mPCMMixBuffer.resize(mSamplesPerFrame);
 
-            mPPU.toggleDebugDrawablesState();
+            //mPPU.toggleDebugDrawablesState();
         }
 
         virtual ~EngineCore() = default;
@@ -132,7 +132,6 @@ class EngineCore {
                 buf = static_cast<const uint8_t*>(fb.data);
             } else {
                 // Rendering into intermediate buffer
-               // static std::array<uint8_t, SCREEN_WIDTH * SCREEN_HEIGHT * 4> sFramebuffer; 
                 mPPU.render(mFramebuffer.data(), stride_bytes);
                 mPPU.renderDebugScreen(mFramebuffer.data(), stride_bytes);
                 buf = mFramebuffer.data();

@@ -1,17 +1,13 @@
 #include "levels.h"
 #include "framework/ppu/ppu_msx_utils.h"
 
-#include "level_01.tmx.hpp"
-#include "level_01_tiles.png.hpp"
-
 #include <random> 
 
 using namespace RetroCore::PPU;
 
 namespace KnightGame {
 
-static_assert(LevelBase::check_extras_layer(level_01_extras), "All level 1 extras positions must be divisible by 16 and size 16x16 !");
-
+static const std::string sWorldTilesImageFilename = "images/level_01_tiles.png";
 static const std::string sMainMusicThemeFilename = "music/suno_level_01_bgm_01.mp3";
 static const std::string sBossMusicThemeFilename = "music/suno_level_01_boss_01.mp3";
 
@@ -24,17 +20,27 @@ Level_1::Level_1(StateManager& sm, V99x8& ppu, SoundEngine& se, const AssetManag
 void Level_1::enter() {
     LevelBase::enter();
 
-    // Prepare level map
-    mWorld.addLayer(level_01_ground_map, GameWorld::Tile::Type::Ground, GameWorld::Tile::Flags::None);
-    mWorld.addLayer(level_01_columns_map, GameWorld::Tile::Type::Wall, GameWorld::Tile::Flags::None);
-    mWorld.addLayer(level_01_rivers_map, GameWorld::Tile::Type::Water, GameWorld::Tile::Flags::None);
-    mWorld.addLayer(level_01_bridges_map, GameWorld::Tile::Type::Bridge, GameWorld::Tile::Flags::None);
-    mWorld.addLayer(level_01_end_map, GameWorld::Tile::Type::Wall, GameWorld::Tile::Flags::None);
+    // Clear level map and set common state
+    if(!mWorld.init("maps/level_01.tmx")) {
+        return;
+    }
 
-    mWorld.addExtras(level_01_extras);
+    mWorld.setCameraHeight(34);
 
     // Load level tiles
-    mPPU.pushTiles(level_1_tiles_tiles.data(), LEVEL_1_TILES_TILE_COUNT, 0 /* first tile offset */);
+    using PATTERN_8D_8C = PPU::MsxPPU_BASE::PATTERN_8D_8C;
+
+    std::vector<PATTERN_8D_8C> tile_patterns;
+    if(mAssetManager.hasFile(sWorldTilesImageFilename)) {
+        std::cout << "Load " << sWorldTilesImageFilename << std::endl;
+
+        const Asset sprites_asset = mAssetManager.getAsset(sWorldTilesImageFilename);
+        tile_patterns = RetroCore::PPU::Utils::MSX::loadTilesFromIndexedPNG<PATTERN_8D_8C>(sprites_asset.pData, sprites_asset.sizeInBytes, &mPPU.getPalette() /* ref palette */, false /* dont skip empty tiles */);
+    
+        for(uint16_t i = 0; i < static_cast<uint16_t>(tile_patterns.size()); ++i) {
+            mPPU.pushTile(i, tile_patterns[i]);
+        }
+    }
 }
 
 void Level_1::enterBossZone() {

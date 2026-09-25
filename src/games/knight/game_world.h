@@ -4,13 +4,19 @@
 #include "game_objects.h"
 
 #include "framework/tmx/tmx_loader.h"
+#include "framework/game_engine/sound_player.h"
 #include "framework/oscillators.h"
+
+#include <array>
 
 namespace KnightGame {
 
 class GameWorld : public ObjectSpawner {
     public: 
+        using SoundPlayer = GameEngine::SoundPlayer;
+
         static const uint16_t kTileSize = 8;
+        static const uint16_t kExtraTileSize = 16;
 
         static const uint16_t kMapWidth = 64;
         static const uint16_t kMapHeight = 256;
@@ -21,16 +27,10 @@ class GameWorld : public ObjectSpawner {
         static constexpr uint16_t kMapTilesCount = kMapWidth * kMapHeight;
         static constexpr uint16_t kMapExtrasCount = kExtrasMapWidth * kExtrasMapHeight;
 
-        class SoundPlayer {
-            public:
-                SoundPlayer(const SoundEngine& soundEngine): mSoundEngine(soundEngine) {}
-
-                void playSFX(std::unique_ptr<GameEngine::AudioSource> sfxTrack) const {
-                    mSoundEngine.playSFX(std::move(sfxTrack));
-                }
-
-            private:
-                const SoundEngine& mSoundEngine;
+        class PlayerStatus {
+            int8_t   lives = 3;
+            uint32_t score = 0;
+            uint32_t hiscore = 0;
         };
 
         class Camera {
@@ -41,32 +41,24 @@ class GameWorld : public ObjectSpawner {
                     NONE
                 };
 
-                Camera(uint16_t map_height): mPosY(0), mMapHeight(map_height), mDirection(Direction::UP), 
-                    mPulseOscillator(5, 0, 1, 1, 4) /* 1 scanline in 5 frames */
-                {
-                    
-                    assert(mMapHeight > 0);
+                Camera(): mPosY(0), mDirection(Direction::UP), mMoveOscillator(5, 0, 1, 1, 4) {
                 }
                 
-                Camera(uint16_t height, uint16_t map_height): Camera(map_height) {
+                Camera(uint16_t height): Camera() {
                     setHeight(height);
                 }
                 
-                Camera(uint16_t height, uint16_t map_height, uint16_t pos_y): Camera(height, map_height) {
+                Camera(uint16_t height, uint16_t pos_y): Camera(height) {
                     setPosY(pos_y);
                 }
 
                 void setPosY(uint16_t pos) {
-                    if(pos > mMaxPosY) {
-                        mPosY = mMaxPosY;
-                        return;
-                    }
                     mPosY = pos;
                 }
 
                 void stop() {
                     mDirection = Direction::NONE;
-                    mPulseOscillator.setRange(0, 0);
+                    mMoveOscillator.setRange(0, 0);
                 }
 
                 void setCameraSpeed(uint16_t s) {
@@ -74,27 +66,26 @@ class GameWorld : public ObjectSpawner {
                         mDirection = Direction::NONE;
                         return;
                     }
-                    mPulseOscillator.setPeriod(s);
-                    mPulseOscillator.setPulsePosition(s-1); 
+                    mMoveOscillator.setPeriod(s);
+                    mMoveOscillator.setPulsePosition(s-1); 
                 }
 
                 void setHeight(uint16_t height) {
                     assert(height > 0);
                     mHeight = height;
-                    mMaxPosY = mMapHeight * GameWorld::kTileSize - mHeight * GameWorld::kTileSize;
                     setPosY(mPosY);
                 }
 
                 void setDirection(Direction dir) {
                     if(mDirection == dir) return;
                     mDirection = dir;
-                    mPulseOscillator.reset();
+                    mMoveOscillator.reset();
                 }
 
                 void update(float dt) {
-                    mPulseOscillator.update(1);  // frame based
+                    mMoveOscillator.update(dt);
                     if(mDirection != Direction::NONE) {
-                        uint16_t offset = mPulseOscillator.getValue();
+                        uint16_t offset = mMoveOscillator.getValue();
                         setPosY(getPosY() + (mDirection == Direction::DOWN ? offset : -offset));
                     }
                 }
@@ -108,39 +99,35 @@ class GameWorld : public ObjectSpawner {
 
             private:
                 uint16_t  mPosY ;       // vertical position in pixels (top side)
-                uint16_t  mMapHeight;
                 Direction mDirection;
-                PulseOscillator<uint16_t, uint16_t> mPulseOscillator; // drives camera movement
+                PulseOscillator<uint16_t, uint16_t> mMoveOscillator; // drives camera movement
 
                 uint16_t  mHeight;      // height in 8x8px tiles
-                uint16_t  mMaxPosY;
         };
 
         struct Tile {
-            enum class Type: uint8_t {
-                None    = 0,
-                Ground  = 1,
-                Wall    = 2,
-                Water   = 3,
-                Bridge  = 4,
+            enum class Flags: uint8_t {
+                None     = 0x00,
+                Obstacle = 0x01,
+                Water    = 0x02
             };
 
-            enum class Flags: uint8_t {
-                None    = 0x00,
-            };
+            DEFINE_ENUM_FLAG_OPERATORS(Flags)
 
             uint16_t    tile_index; // vdp tile index
-            Type        type;  
             Flags       flags;      // tile flags
         
-            Tile(): tile_index(0), type(Type::None), flags(Flags::None) {}
-            Tile(uint16_t _tile_index, Type _type, Flags _flags = Flags::None): tile_index(_tile_index), type(_type) {
-                flags = Flags((uint8_t)flags | (uint8_t)_flags);
+            Tile(): tile_index(0), flags(Flags::None) {}
+            
+            Tile(uint16_t _tile_index, Flags _flags = Flags::None): tile_index(_tile_index), flags(_flags) { }
+
+            inline static bool is_set(Flags flag, Flags mask) {
+                return (static_cast<uint8_t>(mask) & static_cast<uint8_t>(flag)) == static_cast<uint8_t>(flag);
             }
 
-            void reset() noexcept { tile_index = 0; type = Type::None; flags = Flags::None; }
+            void reset() noexcept { tile_index = 0; Flags::None; }
 
-            bool isPassable() const noexcept { return type != Type::Wall && type != Type::Water; }
+            bool isPassable() const noexcept { return flags == Flags::None; }
         };
 
         struct Extra {
@@ -161,29 +148,66 @@ class GameWorld : public ObjectSpawner {
                 EXIT        = 6
             };
 
-            State   state;
-            Type    type;
+            State       state = State::Hidden;
+            Type        type  = Type::EMPTY;
+            int16_t     hp    = 5;
 
-            Extra(): type(Type::EMPTY) {};
+            Extra() = default;
             Extra(Type _type, State _state): state(_state), type(_type) {};
 
             void reset() noexcept { type = Type::EMPTY; }
 
-            [[nodiscard]] bool isPassable() const { return type != Type::BARRIER; }
+            static Type typeFromString(const std::string& str) {
+                if(str == "500") return Type::POINTS500;
+                else if(str == "killall") return Type::KILLALLSCR;
+                else if(str == "freeze") return Type::FREEZE10;
+                else if(str == "barrier") return Type::BARRIER;
+                else if(str == "life") return Type::EXTRALIFE;
+                else if(str == "exit") return Type::EXIT;
+            
+                return Type::EMPTY;
+            }
 
-            void hit(uint8_t damage) noexcept {
-                if(type == Type::EMPTY) return;
+            [[nodiscard]] Type getType() const { return type; }
 
+            [[nodiscard]] int16_t getHealth() const { return hp; }
+
+            [[nodiscard]] bool isPassable() const { return !(type == Type::BARRIER && state == State::Visible); }
+
+            // updates extra tile state.
+            [[nodiscard]] bool takeDamage(int16_t damage, const AssetManager& am, const SoundPlayer& sp) noexcept {
+                if(type == Type::EMPTY || hp == 0 || damage == 0) return false;
+                
+                static const MP3Stream extraHitSfxTrack(am.getAsset("sfx/extra_block_hit.mp3"), false /* no loop */);
+
+                assert(damage > 0);
                 switch(state) {
                     case State::Hidden:
+                        hp -= 1;
                         state = State::Unknown;
-                        break;
+                        sp.playSFX(extraHitSfxTrack);
+                        return true;
                     case State::Unknown:
-                        state = State::Visible;
-                        break;
+                        hp -= std::min(hp, damage);
+                        state = (hp == 0) ? State::Visible : state;
+                        sp.playSFX(extraHitSfxTrack);
+                        return true;
                     default:
-                        break;
+                        return false;
                 }
+            }
+
+            [[nodiscard]] bool take(const AssetManager& am, const SoundPlayer& sp) noexcept {
+                assert(type != Type::EMPTY);
+
+                if(state == State::Visible) {
+                    static const MP3Stream extraTakeSfxTrack(am.getAsset("sfx/extra_block_take.mp3"), false /* no loop */);
+                    sp.playSFX(extraTakeSfxTrack);
+                    state = State::Taken;
+                    hp = 0;
+                    return true;
+                }
+                return false;
             }
 
             [[nodiscard]] uint16_t getSubtilePatternIndex(uint8_t x, uint8_t y) const noexcept {
@@ -214,8 +238,14 @@ class GameWorld : public ObjectSpawner {
                                 tile_index_offset = 80;
                                 break;
                             case Type::BARRIER:
-                            default:
                                 tile_index_offset = 60;
+                                break;
+                            case Type::EXIT:
+                                tile_index_offset = 88;
+                                break;
+                            default:
+                                assert(false && "Unknown Extra::Type");
+                                break;
                         }
                         break;
                     case State::Taken:
@@ -227,65 +257,26 @@ class GameWorld : public ObjectSpawner {
             }
         };
 
-        GameWorld(const SoundEngine& soundEngine);
+        GameWorld(const V99x8& ppu, const AssetManager& assetManager, const SoundEngine& soundEngine);
+
+        bool init(const std::string& mapFilePath);
 
         void clear() { 
-            for(uint16_t i = 0; i < kMapTilesCount; ++i) { mTiles[i].reset(); } 
-            for(uint16_t i = 0; i < kMapExtrasCount; ++i) { mExtraTiles[i].reset(); } 
-        }
-
-        void addLayer(const std::array<std::array<uint32_t, 64>, 256>& indices, Tile::Type layer_type, Tile::Flags flags) {
-            static_assert(kMapWidth == 64);
-            static_assert(kMapHeight == 256);
-
-            for(uint16_t x = 0; x < kMapWidth; ++x) {
-                for(uint16_t y = 0; y < kMapHeight; ++y) {
-                    const uint32_t tile_index = indices[y][x];
-                    if(tile_index == 0) continue;
-
-                    mTiles[x + y * kMapWidth] = {tile_index - 1 /* Tiled editor indices are 1-based */, layer_type, flags};
-                }
-            }
-        }
-
-        template <typename T, std::size_t N>
-        void addExtras(const std::array<T, N>& arr) {
-            static_assert(kExtrasMapWidth == 32);
-            static_assert(kExtrasMapHeight == 128);
-
-            for(const auto& entry: arr) {
-                uint16_t xx = entry.x >> 4;
-                uint16_t yy = entry.y >> 4;
-
-                auto& extra =  mExtraTiles[xx + yy * kExtrasMapWidth];
-                extra.state = Extra::State::Visible; // for test !!!
-
-                if(entry.type == "500") {
-                    extra.type = Extra::Type::POINTS500;
-                } else if(entry.type == "killall") {
-                    extra.type = Extra::Type::KILLALLSCR;
-                } else if(entry.type == "freeze") {
-                    extra.type = Extra::Type::FREEZE10;
-                } else if(entry.type == "life") {
-                    extra.type = Extra::Type::EXTRALIFE;
-                } else if(entry.type == "exit") {
-                    extra.type = Extra::Type::EXIT;
-                } else if(entry.type == "barrier") {
-                    extra.type = Extra::Type::BARRIER;
-                }
-            }
+            for(auto& tile: mTiles) { tile.reset(); } 
+            for(auto& extra_tile: mExtraTiles) { extra_tile.reset(); } 
         }
 
         // World map height in 8x8 tiles
         [[nodiscard]] uint16_t getMapHeight() const noexcept { return kMapHeight; }
 
-        [[nodiscard]] const std::array<Tile, kMapTilesCount>& getTiles() const noexcept { return mTiles; }
+        [[nodiscard]] const std::vector<Tile>& getTiles() const noexcept { return mTiles; }
 
         [[nodiscard]] const Tile& getBackgroundTile(uint32_t tile_index) const {
             assert(tile_index < mTiles.size()); 
             return mTiles[tile_index]; 
         }
 
+        // get extra tile using 8x8 world coordinates
         [[nodiscard]] const Extra& getExtraTile(uint16_t x, uint16_t y) const {
             uint32_t extra_tile_index = (x >> 1) + ((y >> 1) << 5);
             assert(extra_tile_index < mExtraTiles.size());
@@ -312,17 +303,19 @@ class GameWorld : public ObjectSpawner {
         [[nodiscard]] const std::vector<std::unique_ptr<GameObject>>& getGameObjects() const noexcept { return mGameObjects; }
 
         // tests aabb collision with world map and calculates offset to avoid collision
-        bool testMapCollitionAt(const GameObject& obj, float offset_x = 0.0f, float offset_y = 0.0f) const {
+        bool testMapCollisionAt(const GameObject& obj, float offset_x = 0.0f, float offset_y = 0.0f) const {
             const AABB& aabb = obj.getObstacleAABB();
+            if(aabb.isSingular()) return false;
+
             float x = obj.getPosX() + offset_x + aabb.x;
             float y = obj.getPosY() + offset_y + aabb.y;
 
             static const float sTileSizeF = static_cast<float>(kTileSize);
 
-            uint16_t minTileX = std::max((int16_t)0, static_cast<int16_t>(std::floor(x / sTileSizeF)));
-            uint16_t maxTileX = std::min(static_cast<int16_t>(std::floor((x + aabb.w - 0.001f) / sTileSizeF)), static_cast<int16_t>(kMapWidth - 1));
-            uint16_t minTileY = std::max((int16_t)0, static_cast<int16_t>(std::floor(y / sTileSizeF)));
-            uint16_t maxTileY = std::min(static_cast<int16_t>(std::floor((y + aabb.h - 0.001f) / sTileSizeF)), static_cast<int16_t>(kMapHeight - 1));
+            int16_t minTileX = std::max((int16_t)0, static_cast<int16_t>(std::floor(x / sTileSizeF)));
+            int16_t maxTileX = std::min(static_cast<int16_t>(std::floor((x + aabb.w - 0.001f) / sTileSizeF)), static_cast<int16_t>(kMapWidth - 1));
+            int16_t minTileY = std::max((int16_t)0, static_cast<int16_t>(std::floor(y / sTileSizeF)));
+            int16_t maxTileY = std::min(static_cast<int16_t>(std::floor((y + aabb.h - 0.001f) / sTileSizeF)), static_cast<int16_t>(kMapHeight - 1));
 
             for (uint16_t tx = minTileX; tx <= maxTileX; ++tx) {
                 for (uint16_t ty = minTileY; ty <= maxTileY; ++ty) {
@@ -332,6 +325,129 @@ class GameWorld : public ObjectSpawner {
                 }
             }
             return false;
+        }
+
+        void playerRedeemExtra(Player& player) {
+            const AABB& aabb = player.getObstacleAABB();
+            assert(!aabb.isSingular());
+
+            int x_min = player.getPosX<int>() + aabb.x;
+            int y_min = player.getPosY<int>() + aabb.y;
+            int x_max = x_min + aabb.w;
+            int y_max = y_min + aabb.h;
+
+            int minTileX = std::max(0, x_min / kExtraTileSize);
+            int maxTileX = std::min(x_max / kExtraTileSize, (mMapWidth >> 1) - 1);
+            int minTileY = std::max(0, y_min / kExtraTileSize);
+            int maxTileY = std::min(y_max / kExtraTileSize, (mMapHeight >> 1) - 1);
+
+            for (uint16_t tx = minTileX; tx <= maxTileX; ++tx) {
+                for (uint16_t ty = minTileY; ty <= maxTileY; ++ty) { 
+                    uint32_t extra_tile_index = tx + ty * 32;
+                    assert(extra_tile_index < mExtraTiles.size());
+                    Extra& extra = mExtraTiles[tx + ty * 32];
+                    Extra::Type e_type = extra.getType();
+
+                    if(e_type == Extra::Type::EMPTY) continue;
+                    if(extra.take(mAssetManager, mSoundPlayer)) {
+                        switch(e_type) {
+                            case Extra::Type::POINTS500:
+                                player.adjustScore(500);
+                                break;
+                            case Extra::Type::EXTRALIFE:
+                                player.adjustLives(1);
+                                break;
+                            case Extra::Type::KILLALLSCR:
+                                killAllEnemiesOnScreen();
+                                break;
+                            case Extra::Type::FREEZE10:
+                                freezeWorld(10);
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                }
+            }
+        }
+
+        void playerRedeemUpgrade(Player* pPlayer, Upgrade& upgrade) {
+            if(!pPlayer) return;
+
+            assert(upgrade.getType() == GameObject::EntityType::PowerUp || upgrade.getType() == GameObject::EntityType::WeaponUp);
+            if(!pPlayer->checkCollisionAABB(upgrade)) return;
+            pPlayer->adjustScore(upgrade.getRewardPoints());
+
+            if(upgrade.getType() == GameObject::EntityType::PowerUp) {
+                // PowerUp
+                PowerUp* pObj = reinterpret_cast<PowerUp*>(&upgrade);
+                switch(pObj->getState()) {
+                    case PowerUp::State::INVALNURABILE_200:
+                        pPlayer->setState(Player::State::INVALNURABLE);
+                        break;
+                    case PowerUp::State::INVISIBLE_200:
+                        pPlayer->setState(Player::State::INVISIBLE);
+                        break;
+                    case PowerUp::State::SHIELD_200:
+                        pPlayer->giveShield();
+                        break;
+                }
+            } else {
+                // WeaponUp
+            }
+
+            upgrade.setActive(false);
+        }
+
+        void killAllEnemiesOnScreen() {}
+
+        void freezeWorld(unsigned int seconds) {
+            mFreezeTimer.start(static_cast<float>(seconds));
+        }
+
+        void processPlayerWeaponCollisions(Weapon& weapon) {
+            if(weapon.getOwner() != Weapon::OwnerType::Player || !weapon.isActive()) return;
+            
+            const AABB& aabb = weapon.getCollisionAABB();
+            float x = weapon.getPosX() + aabb.x;
+            float y = weapon.getPosY() + aabb.y;
+
+            // first test against enemies
+
+            // test against upgrades
+            for(std::unique_ptr<GameObject>& pObject: mGameObjects) {
+                if(pObject->getType() == GameObject::EntityType::PowerUp || pObject->getType() == GameObject::EntityType::WeaponUp) {
+                    if(weapon.checkCollisionAABB(*pObject.get())) {
+                        reinterpret_cast<Upgrade*>(pObject.get())->toggleState();
+                        weapon.setActive(false);
+                        return;
+                    }
+                }
+            }
+
+            // test against weapon upgrades
+
+            // test against extra tiles
+            static const float sExtraTileSizeF = static_cast<float>(kExtraTileSize);
+
+            int16_t minTileX = std::max((int16_t)0, static_cast<int16_t>(std::floor(x / sExtraTileSizeF)));
+            int16_t maxTileX = std::min(static_cast<int16_t>(std::floor((x + aabb.w - 0.001f) / sExtraTileSizeF)), static_cast<int16_t>(kExtrasMapWidth - 1));
+            int16_t minTileY = std::max((int16_t)0, static_cast<int16_t>(std::floor(y / sExtraTileSizeF)));
+            int16_t maxTileY = std::min(static_cast<int16_t>(std::floor((y + aabb.h - 0.001f) / sExtraTileSizeF)), static_cast<int16_t>(kExtrasMapHeight - 1));
+
+            for (int16_t tx = minTileX; tx <= maxTileX; ++tx) {
+                for (int16_t ty = minTileY; ty <= maxTileY; ++ty) {
+                    uint32_t extra_tile_index = tx + ty * 32;
+                    assert(extra_tile_index < mExtraTiles.size());
+
+                    Extra& extra = mExtraTiles[extra_tile_index];
+                    int16_t extra_prev_health = extra.getHealth();
+                    if(extra.takeDamage(weapon.getDamage(), mAssetManager, mSoundPlayer)) {
+                        // adjust weapon damage
+                        weapon.decreaseDamage(std::min(0, extra_prev_health - extra.getHealth()));
+                    }
+                }
+            }
         }
 
         void moveObject(GameObject& obj, float dx, float dy) {
@@ -355,7 +471,7 @@ class GameWorld : public ObjectSpawner {
                 
                 // X axis first
                 offset_x += stepX;
-                if (testMapCollitionAt(obj, offset_x, offset_y)) {
+                if (testMapCollisionAt(obj, offset_x, offset_y)) {
                     if (stepX > 0.0f) {
                         int16_t tileX = static_cast<int16_t>(std::floor((offset_x + aabb.w) / sTileSizeF));
                         offset_x = static_cast<float>((tileX - 1) * sTileSizeF);
@@ -367,7 +483,7 @@ class GameWorld : public ObjectSpawner {
                 }
 
                 offset_y += stepY;
-                if (testMapCollitionAt(obj, offset_x, offset_y)) {
+                if (testMapCollisionAt(obj, offset_x, offset_y)) {
                     if (stepY > 0.0f) {
                         int16_t tileY = static_cast<int16_t>(std::floor((offset_y + aabb.h) / sTileSizeF));
                         offset_y = static_cast<float>((tileY - 1) * sTileSizeF);
@@ -383,52 +499,69 @@ class GameWorld : public ObjectSpawner {
         }
 
 
-        void movePlayer(float dx, float dy) {
-            if(!mpPlayer) return;
+        void movePlayer(uint player_id, float dx, float dy) {
+            assert(player_id < 2);
+
+            Player* pPlayer = mpPlayers[player_id];
+            if(!pPlayer) return;
 
             static const float sViewportTopGap = 32.0f;
             static const float sViewportMaxX = 511.0f;
             static const float sViewportMaxY = 272.0f; // 16 pix at the bottom are status line
 
-            const AABB& aabb = mpPlayer->getObstacleAABB();
+            const AABB& aabb = pPlayer->getObstacleAABB();
             
-            moveObject(*mpPlayer, dx, dy);
+            moveObject(*pPlayer, dx, dy);
             
             // camera bounds with 16px gap on top
-            mpPlayer->setPos(
-                std::min(sViewportMaxX - aabb.w, std::max(0.0f - aabb.x, mpPlayer->getPosX())), 
-                std::min((float)mCamera.getPosY() + sViewportMaxY - aabb.h, std::max((float)mCamera.getPosY() + sViewportTopGap - aabb.y, mpPlayer->getPosY()))
-            );
+            if(!pPlayer->isDying()) {
+                pPlayer->setPos(
+                    std::min(sViewportMaxX - (aabb.x + aabb.w), std::max(0.0f - aabb.x, pPlayer->getPosX())), 
+                    std::min((float)mCamera.getPosY() + sViewportMaxY - (aabb.y + aabb.h), std::max((float)mCamera.getPosY() + sViewportTopGap - aabb.y, pPlayer->getPosY()))
+                );
+            }
 
             // check if trapped. then kill player
-            if(testMapCollitionAt(*mpPlayer)) {
-                mpPlayer->takeDamage(Character::kMaxDamage, true /* force kill */);
-                mCamera.setDirection(Camera::Direction::NONE);
+            if(testMapCollisionAt(*pPlayer)) {
+                pPlayer->takeDamage(Character::kMaxDamage, true /* force kill */);
+                
+                if(isOnlyOrBothPlayersDying()) {
+                    // last player or all players are dead. stop camera
+                    mCamera.stop();
+                }
             }
         }
 
-        void firePlayer() {
-            if(!mpPlayer) return;
-            mpPlayer->fire();
+        void firePlayer(int player_id) {
+            assert(player_id < 2);
+            if(!mpPlayers[player_id]) return;
+            mpPlayers[player_id]->fire(mAssetManager, mSoundPlayer);
         }
 
         void spawnObject(std::unique_ptr<GameObject> pNewObject) override final {
             if (!pNewObject) return;
-
             mPendingObjects.push_back(std::move(pNewObject));
         }
 
         void update(float dt);
 
-        const Player* getPlayer() const { return mpPlayer; }
+        const Player* getPlayer(uint player_id) const { assert(player_id < 2); return mpPlayers[player_id]; }
 
-        [[nodiscard]] bool isPlayerDead() const {
-            return mpPlayer == nullptr;
+        [[nodiscard]] bool isGameOver() const {
+            return mpPlayers[0] == nullptr && mpPlayers[1] == nullptr;
         }
 
-        // Is player dying in sinle player mode or last standing player is dying in multiplayer mode
-        [[nodiscard]] bool isLastOrOnlyPlayerDying() const {
-            return mpPlayer && mpPlayer->isDying();
+        [[nodiscard]] bool isPlayerDead(uint player_id) const {
+            assert(player_id < 2);
+            return mpPlayers[player_id] == nullptr;
+        }
+
+        // Is player dying in sinle player mode or last standing player or both is dying in multiplayer mode
+        [[nodiscard]] bool isOnlyOrBothPlayersDying() const {
+            if(!mpPlayers[0] && !mpPlayers[1]) return false;
+            return  (mpPlayers[0] && mpPlayers[0]->isDying() && mpPlayers[1] == nullptr) || 
+                    (mpPlayers[1] && mpPlayers[1]->isDying() && mpPlayers[0] == nullptr) ||
+                    (mpPlayers[0] && mpPlayers[0]->isDying() && mpPlayers[1] && mpPlayers[1]->isDying());
         }
 
         Camera& getCamera() { return mCamera; }
@@ -437,21 +570,32 @@ class GameWorld : public ObjectSpawner {
         // Offset to camera visible tiles
         uint32_t getCurrentCameraTilesOffset() const {
             static constexpr float sTileHeightF = static_cast<float>(kTileSize);
-            return static_cast<uint32_t>(std::ceil(static_cast<float>(mCamera.getPosY()) / sTileHeightF)) * kMapWidth;
+            return static_cast<uint32_t>(std::floor(static_cast<float>(mCamera.getPosY()) / sTileHeightF)) * kMapWidth;
         }
 
     private:
-        SoundPlayer mSoundPlayer;
-        Camera      mCamera;
+        const V99x8& mPPU; // for debug
 
-        std::array<Extra, kMapExtrasCount> mExtraTiles; // Tiles that holds extra power ups
-        std::array<Tile, kMapTilesCount> mTiles;
+        // A non-owning, weak shortcut pointer providing immediate access to the player instance
+        std::array<Player*, 2> mpPlayers; 
+
+        bool                mIsInitialized = false;
+        uint16_t            mMapWidth  = 0;
+        uint16_t            mMapHeight = 0;
+        const AssetManager& mAssetManager;
+        SoundPlayer         mSoundPlayer;
+        Camera              mCamera;
+
+        std::vector<Extra> mExtraTiles; // Tiles that holds extra power ups
+        std::vector<Tile> mTiles;
 
         std::vector<std::unique_ptr<GameObject>> mGameObjects; 
         std::vector<std::unique_ptr<GameObject>> mPendingObjects; // Deferred spawn list
 
-        // A non-owning, weak shortcut pointer providing immediate access to the player instance
-        Player* mpPlayer = nullptr; 
+        // timers
+        GameEngine::Timer mFreezeTimer;
+
+        uint32_t mFrameNumber = 0;
 };
 
 }  // namespace KnightGame

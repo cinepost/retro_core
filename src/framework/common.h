@@ -27,6 +27,21 @@
 
 namespace RetroCore {
 
+#define DEFINE_ENUM_FLAG_OPERATORS(EnumName) \
+    friend inline EnumName operator|(EnumName lhs, EnumName rhs) { \
+        return static_cast<EnumName>(static_cast<std::underlying_type_t<EnumName>>(lhs) | static_cast<std::underlying_type_t<EnumName>>(rhs)); \
+    } \
+    friend inline EnumName operator&(EnumName lhs, EnumName rhs) { \
+        return static_cast<EnumName>(static_cast<std::underlying_type_t<EnumName>>(lhs) & static_cast<std::underlying_type_t<EnumName>>(rhs)); \
+    } \
+    friend inline EnumName operator~(EnumName flag) { \
+        return static_cast<EnumName>(~static_cast<std::underlying_type_t<EnumName>>(flag)); \
+    } \
+    friend inline EnumName& operator|=(EnumName& lhs, EnumName rhs) { lhs = lhs | rhs; return lhs; } \
+    friend inline EnumName& operator&=(EnumName& lhs, EnumName rhs) { lhs = lhs & rhs; return lhs; }
+
+
+
 [[nodiscard]] constexpr bool isPowerOfTwo(size_t n) noexcept {
     return n > 0 && (n & (n - 1)) == 0;
 }

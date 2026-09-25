@@ -15,11 +15,11 @@ namespace KnightGame {
 
 class LevelBase : public BaseState {
     protected:
-        static constexpr uint16_t kVerticalTilesCount = 280 / 8; // 35 tiles - 1 status line for 8p xscrolling
+        static constexpr uint16_t kVerticalTilesCount = 272 / 8; // 34 tile lines - 2 status lines
         static constexpr uint16_t kVisibleTilesCount = GameWorld::kMapWidth * kVerticalTilesCount; // One bottom tile lines are reserved for status bar minus one for scrolling
 
     public:
-        LevelBase(StateManager& sm, V99x8& ppu, SoundEngine& se, const AssetManager& am): BaseState(sm, ppu, se, am), mWorld(se), mSpriteList(ppu) {}
+        LevelBase(StateManager& sm, V99x8& ppu, SoundEngine& se, const AssetManager& am): BaseState(sm, ppu, se, am), mWorld(ppu, am, se), mSpriteList(ppu) {}
         
     protected:
         void enter() override;
@@ -28,26 +28,10 @@ class LevelBase : public BaseState {
         void handleInput(retro_input_state_t input_cb) override final;
 
         virtual void enterBossZone() = 0;
-
-    public:
-        // Helper function to check extras layer placement
-        template <typename T, std::size_t N>
-        static constexpr bool check_extras_layer(const std::array<T, N>& arr) {
-            for (std::size_t i = 0; i < arr.size(); ++i) {
-                if (arr[i].x % 16 != 0) {
-                    return false;
-                }
-                if (arr[i].y % 16 != 0) {
-                    return false;
-                }
-                if (arr[i].width != 16 || arr[i].height != 16) {
-                    return false;
-                }
-            }
-            return true;
-        }
                 
     protected:
+        void renderStatusLines();
+
         KnightGame::GameWorld mWorld;
 
         Asset mMainBgmAsset;  // main background music
@@ -61,7 +45,7 @@ class LevelBase : public BaseState {
         // level flags
         bool     mBossZoneEntered = false;
         bool     mBossReached = false;
-        bool     mIsLastOrOnlyPlayerDying = false;
+        bool     mIsOnlyOrBothPlayersDying = false; // flag for bgm change
 };
 
 class Level_1 : public LevelBase {

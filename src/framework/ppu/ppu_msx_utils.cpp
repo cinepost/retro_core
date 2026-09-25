@@ -59,20 +59,32 @@ template<typename T>
 
     // find closest reference palette colors. check image is 1bpp if no palleter is provided
     std::array<uint32_t, 256> image_colors_to_palette;
+    std::fill(image_colors_to_palette.begin(), image_colors_to_palette.end(), 0);
     if(pRefPalette) {
-        for (size_t i = 0; i < state.info_png.color.palettesize; ++i) {
+        // MSX color 0 is transparent/black
+        for (size_t i = 1; i < state.info_png.color.palettesize; ++i) {
             // quantize to 333 and back
             RGBA8888 color(state.info_png.color.palette[i * 4], state.info_png.color.palette[i * 4 + 1], state.info_png.color.palette[i * 4 + 2], 255);
             color = v9938_to_rgb888(rgb888_to_v9938(color));
             assert(i < image_colors_to_palette.size());
             image_colors_to_palette[i] = pRefPalette->findClosestColorIndex(color, false /* do not include alpha */);
         }
-    } else {
-        if(state.info_png.color.palettesize != 2) {
-            std::cerr << "Error: Only 1BPP images are supported if no reference palette is provided!" << std::endl;
-            return {};
+    }
+    /*
+     else {
+        if constexpr(std::is_same_v<T, PATTERN_8D_8C>) {
+            if(state.info_png.color.palettesize != 16) {
+                std::cerr << "Error: Only 4BPP images ( image palette is " << state.info_png.color.palettesize << ") are supported if no reference palette is provided!" << std::endl;
+                return {};
+            }
+        } else if constexpr(std::is_same_v<T, PATTERN_8D> || std::is_same_v<T, PATTERN_32D>) {
+            if(state.info_png.color.palettesize != 2) {
+                std::cerr << "Error: Only 1BPP images are supported if no reference palette is provided!" << std::endl;
+                return {};
+            }
         }
     }
+    */
 
     std::vector<T> outputTiles;
     const size_t tilesX = imgWidth / tile_width;
@@ -156,7 +168,7 @@ template<typename T>
                             if(!pRefPalette){
                                 if(currentPixel != 0x00) tileRowByte |= (1 << (7 - x)); // MSB layout mapping
                             } else {
-                                assert(false && "not implemented");
+                                if(currentPixel == secondaryColorInRow) tileRowByte |= (1 << (7 - x)); // MSB layout mapping
                             }
                         }
 
@@ -169,7 +181,7 @@ template<typename T>
                         // Store low nibble (Color 0) and high nibble (Color 1) in 4-bit layouts
                         if constexpr(std::is_same_v<T, PPU::MsxPPU_BASE::PATTERN_8D_8C>) {
                             if(pRefPalette) {
-                                currentTile.color[y] = (firstColorInRow & 0x0F) | ((secondaryColorInRow & 0x0F) << 4);
+                                currentTile.color[y] = (image_colors_to_palette[firstColorInRow] & 0x0F) | ((image_colors_to_palette[secondaryColorInRow] & 0x0F) << 4);
                             } else {
                                 currentTile.color[y] = 0xF0;
                             }

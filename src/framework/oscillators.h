@@ -42,6 +42,7 @@ class OscillatorBase {
     	}
 
     	// Shared Modifiers
+    	void swapMinMaxValues() { T tmp = mMinValue; mMinValue = mMaxValue; mMaxValue = tmp; }
     	void setMinValue(V minValue) { mMinValue = minValue; }
     	void setMaxValue(V maxValue) { mMaxValue = maxValue; }
 	    void setPeriod(T period) { mPeriod = period > static_cast<T>(0) ? period : static_cast<T>(1); }

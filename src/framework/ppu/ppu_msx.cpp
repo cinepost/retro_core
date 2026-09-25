@@ -133,43 +133,6 @@ void MsxPPU<FBDIMS>::cmdHMMM(uint16_t source_x, uint16_t source_y, uint16_t dest
 	}
 }
 
-void MsxPPU_BASE::pushTile(uint16_t tile_index, const std::array<uint8_t, 16>& fullData) {
- 	pushTile(tile_index, PATTERN_8D_8C(fullData));
-}
-
-void MsxPPU_BASE::pushTile(uint16_t tile_index, const PATTERN_8D_8C& pattern) {
-	if(mScreenMode != MsxPPU_BASE::ScreenMode::VSCREEN_1 && mScreenMode != MsxPPU_BASE::ScreenMode::VSCREEN_2 && mScreenMode != MsxPPU_BASE::ScreenMode::VSCREEN_4) {
-		std::cerr << "Warnging! PATTERN_8D_8C data not supported in " << to_string(mScreenMode);
-		return;
-	}
-
-	tile_index = tile_index % kMaximumPatternsCount; // wrap index around
-	const uint32_t tile_address_offset = tile_index * 8;
-
-	std::memcpy(&mVRAM[getPatternTableAddress() + tile_address_offset], pattern.tile.data(), 8);
-	std::memcpy(&mVRAM[getColorTableAddress() + tile_address_offset], pattern.color.data(), 8);
-}
-
-void MsxPPU_BASE::pushSpritePattern(uint16_t tile_index, const uint8_t* pSrc, uint8_t bytes_count) {
-	assert(bytes_count == 8 || bytes_count == 32);
-	uint8_t* pDst = &mVRAM[getSpritePatternTableAddress() + (tile_index << 3)];
-	std::memcpy(pDst, pSrc, bytes_count);
-}
-
-void MsxPPU_BASE::pushSpritePattern(uint16_t tile_index, const std::array<uint8_t, 8>& src) {
-	pushSpritePattern(tile_index, src.data(), 8);
-}
-
-
-void MsxPPU_BASE::pushSpritePattern(uint16_t tile_index, const std::array<uint8_t, 32>& src) {
-	pushSpritePattern(tile_index, src.data(), 32);
-}
-
-void MsxPPU_BASE::writeTileIndex(uint16_t name_table_offset, uint16_t tile_index) {
-	uint16_t* pNameTable = reinterpret_cast<uint16_t*>(&mVRAM[getNameTableAddress()]);
-	pNameTable[name_table_offset] = tile_index;
-}
-
 template <FramebufferDims FBDIMS>
 bool MsxPPU<FBDIMS>::render_SCREEN_2(uint8_t* pFrameData, uint32_t stride_bytes) {
 	static constexpr uint16_t s_y_scroll_mask = FBDIMS.height * 2;

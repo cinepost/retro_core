@@ -28,4 +28,7 @@ std::string readTextFile(const std::string& filePath);
 // Read binary file
 std::vector<unsigned char> readBinaryFile(const std::string& filePath);
 
+// Extract the base name of the core to create a distinct configuration file path
+std::string getCoreConfigPath(const std::string& core_path);
+
 #endif  // __RETRO_CORE_LAUNCHER_OS_H

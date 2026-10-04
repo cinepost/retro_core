@@ -1,7 +1,7 @@
 #ifndef __RETRO_CORE_FRAMEWORK_GAME_ENGINE_GAME_STATE_H
 #define __RETRO_CORE_FRAMEWORK_GAME_ENGINE_GAME_STATE_H
 
-#include "libretro.h"
+#include "framework/game_engine/input.h"
 
 #include <functional>
 
@@ -43,6 +43,8 @@ class Timer {
             }
         }
 
+        void update(int dt) { update(static_cast<float>(dt)); }
+
         // Needed for game mechanics like repeating weapon fire rates:
         void updateLooping(float dt) {
             if (!mIsActive) return;
@@ -77,7 +79,7 @@ class GameState {
     public:
         using Timer = GameEngine::Timer;
         
-        GameState(StateManager& sm) : mStateManager(sm), mTimeElapsed(0.0) {}
+        GameState(StateManager& sm) : mStateManager(sm), mTimeElapsed(0.0), mFrameNumber(0) {}
         virtual ~GameState() = default;
 
         void updateState(double dt) {
@@ -90,13 +92,20 @@ class GameState {
             enter();
         }
 
-        void exitState() { exit(); }
-        void renderState() { render(); }
-        void handleStateInput(retro_input_state_t input_cb) { if(input_cb) handleInput(input_cb); }
+        void exitState() { 
+            exit(); 
+        }
+
+        void renderState() { 
+            render(); 
+            mFrameNumber++; 
+        }
+        
+        void handleStateInput(const Input& input) { handleInput(input); }
 
     protected:
         virtual void exit() = 0;
-        virtual void handleInput(retro_input_state_t input_cb) = 0;
+        virtual void handleInput(const Input& input) = 0;
         virtual void render() = 0;
         virtual void enter() = 0;
         virtual void update(double dt) = 0;
@@ -131,6 +140,7 @@ class GameState {
 
     private:
         double   mTimeElapsed;
+        size_t   mFrameNumber;
 };
 
 }  // namespace GameEngine

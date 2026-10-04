@@ -1,11 +1,10 @@
 #include "levels.h"
 #include "framework/ppu/ppu_msx_utils.h"
 
+#include "sound_files.h"
 #include "level_01_tiles.png.hpp"
 
 namespace KnightGame {
-
-static const std::string sBgmFileName = "music/level_start.mp3";
 
 void LevelSummary::enter() {
     mPPU.setScreenMode(RetroCore::PPU::MsxPPU_BASE::ScreenMode::VSCREEN_2);
@@ -33,7 +32,7 @@ void LevelSummary::enter() {
     mPPU.writeTileIndex(level_attr_offset++, 18); // 1
 
     if(!mSoundEngine.isBGMPlaying() && mTimeToShow >= 6.0 /* enough time to play bgm track */) {
-        const Asset& bgm_asset = mAssetManager.getAsset(sBgmFileName);
+        const Asset& bgm_asset = mAssetManager.getAsset(kLevelStartBgmFileName);
         auto pBgmTrack = std::make_unique<GameEngine::MP3Stream>(bgm_asset.pData, bgm_asset.sizeInBytes, false /* dont loop sound */);
         mSoundEngine.playBGM(std::move(pBgmTrack));
     }
@@ -55,9 +54,8 @@ void LevelSummary::finish() {
     }
 }
 
-void LevelSummary::handleInput(retro_input_state_t input_cb) {
-    unsigned port = 0;
-    if(isAnyKeyPressed(input_cb, port)) {
+void LevelSummary::handleInput(const Input& input) {
+    if(input.isAnyKeyPressed()) {
         finish();
     }
 }

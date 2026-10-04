@@ -25,7 +25,7 @@ class LevelBase : public BaseState {
         void enter() override;
         void update(double dt) override;
         void render() override final;
-        void handleInput(retro_input_state_t input_cb) override final;
+        void handleInput(const Input& input) override final;
 
         virtual void enterBossZone() = 0;
                 

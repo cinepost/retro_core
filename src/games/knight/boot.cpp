@@ -1,11 +1,11 @@
 #include "game.h"
+#include "sound_files.h"
 
 #include "framework/ppu/ppu_utils.h"
 #include "framework/ppu/ppu_msx_utils.h"
 #include "framework/game_engine/mp3_stream.h"
 
-static const std::string sAmikonLogoFileName = "images/amikon_logo_01.png";
-static const std::string sBgmFileName = "sfx/amikon_logo_sound.mp3";
+static const std::string kAmikonLogoFileName = "images/amikon_logo_01.png";
 
 namespace KnightGame {
 
@@ -23,13 +23,13 @@ void Boot::enter() {
 
     std::vector<PATTERN_8D_8C> logo_tiles;
 
-    if(mAssetManager.hasFile(sAmikonLogoFileName)) {
-        const Asset logo_image_asset = mAssetManager.getAsset(sAmikonLogoFileName);
+    if(mAssetManager.hasFile(kAmikonLogoFileName)) {
+        const Asset logo_image_asset = mAssetManager.getAsset(kAmikonLogoFileName);
         logo_tiles = RetroCore::PPU::Utils::MSX::loadTilesFromIndexedPNG<PATTERN_8D_8C>(logo_image_asset.pData, logo_image_asset.sizeInBytes, nullptr /* ref palette */, true /* skip empty tiles */);
     }
 
     if(logo_tiles.empty()) {
-        std::cerr << "Error loading logo tiles from " << sAmikonLogoFileName << std::endl;
+        std::cerr << "Error loading logo tiles from " << kAmikonLogoFileName << std::endl;
         return;
     }
 
@@ -76,8 +76,8 @@ void Boot::enter() {
     mPPU.writeTileIndex(tiles_offst + 228, 28);
     
 
-    if(!mAssetManager.hasFile(sBgmFileName)){
-        std::cerr << "Error loading file " << sBgmFileName << std::endl;
+    if(!mAssetManager.hasFile(kAmikonLogoSfxFileName)){
+        std::cerr << "Error loading file " << kAmikonLogoSfxFileName << std::endl;
     }
 
     mPPU.setBlankingBit(true);
@@ -89,10 +89,9 @@ void Boot::exit() {
     mPPU.clearVRAM();
 }
 
-void Boot::handleInput(retro_input_state_t input_cb) {
-    unsigned port = 0;
-    if(isAnyKeyPressed(input_cb, port)) {
-        mStateManager.pushState(std::make_unique<LevelSummary>(mStateManager, mPPU, mSoundEngine, mAssetManager, 1 /* first stage*/));
+void Boot::handleInput(const Input& input) {
+    if(input.isAnyKeyPressed()) {
+        mStateManager.pushState(std::make_unique<Intro>(mStateManager, mPPU, mSoundEngine, mAssetManager, true /* skip to menu */));
     }
 }
 
@@ -110,7 +109,7 @@ void Boot::update(double dt) {
 void Boot::render() {
     if(mScrollY == 168 && !mSWDrawn) {
 
-        const Asset& bgm_asset = mAssetManager.getAsset(sBgmFileName);
+        const Asset& bgm_asset = mAssetManager.getAsset(kAmikonLogoSfxFileName);
         auto pBgmTrack = std::make_unique<GameEngine::MP3Stream>(bgm_asset.pData, bgm_asset.sizeInBytes, false /* dont loop sound */);
         mSoundEngine.playSFX(std::move(pBgmTrack));
 

@@ -249,14 +249,12 @@ union RGB333 {
 
     constexpr RGB333(uint16_t _v):v(_v) {}
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    //constexpr RGB333(uint8_t _r, uint8_t _g, uint8_t _b): r(_r), g(_g), b(_b) {}
     constexpr RGB333(uint8_t _r, uint8_t _g, uint8_t _b) 
         : r(static_cast<uint16_t>(_r & 0x0007)) // Mask to 3 bits (max value 7)
         , g(static_cast<uint16_t>(_g & 0x0007)) // Mask to 3 bits (max value 7)
         , b(static_cast<uint16_t>(_b & 0x0007)) // Mask to 3 bits (max value 7)
     {}
 #else // Defaulting to Little-Endian (x86_64, modern ARM, etc.)
-    //constexpr RGB333(uint8_t _r, uint8_t _g, uint8_t _b): b(_b), g(_g), r(_r) {}
     constexpr RGB333(uint8_t _r, uint8_t _g, uint8_t _b) 
         : b(static_cast<uint16_t>(_b & 0x0007)) // Mask to 3 bits (max value 7)
         , g(static_cast<uint16_t>(_g & 0x0007)) // Mask to 3 bits (max value 7)

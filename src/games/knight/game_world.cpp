@@ -28,6 +28,10 @@ bool GameWorld::init(const std::string& mapFilePath) {
    mMapWidth = worldMap.width;
    mMapHeight = worldMap.height;
 
+   static const int sMaxMapPixelCoordX = static_cast<int>(mMapWidth) * 8 - 1;
+   static const int sMaxMapPixelCoordY = static_cast<int>(mMapHeight) * 8 - 1;
+
+
    assert(mMapWidth % 2 == 0); // to fit extras we need map width to be multple of 2
 
    // Set up tile layers, power-up objects, weapon upgrade objects
@@ -59,10 +63,10 @@ bool GameWorld::init(const std::string& mapFilePath) {
    auto addExtras = [&](const tmx::ObjectLayer& objLayer) {
       for(const tmx::Object& obj: objLayer.objects) {
          assert(obj.width == kExtraTileSize && obj.height == kExtraTileSize);
-         int x = std::max(0, static_cast<int>(std::floor(obj.x)));
-         int y = std::max(0, static_cast<int>(std::floor(obj.y)));
-         int width = std::max(0, static_cast<int>(std::floor(obj.width)));
-         int height = std::max(0, static_cast<int>(std::floor(obj.height)));
+         int x = std::max(0, obj.getPosX<int>());
+         int y = std::max(0, obj.getPosY<int>());
+         int width = std::max(0, obj.getWidth<int>());
+         int height = std::max(0, obj.getHeight<int>());
 
          if (x % 16 != 0 || y % 16 != 0) {
             std::cerr << "World map extra object " << obj.id << " position should be multiple of 16px !" << std::endl;
@@ -102,20 +106,29 @@ bool GameWorld::init(const std::string& mapFilePath) {
 
    auto addPowerUps = [&](const tmx::ObjectLayer& objLayer) {
       for(const tmx::Object& obj: objLayer.objects) {
-         float x = std::min(496.0f, std::max(0.0f, std::floor(obj.x)));
-         float y = std::min(496.0f, std::max(0.0f, std::floor(obj.y)));
+         int x = std::min(sMaxMapPixelCoordX, std::max(0, obj.getPosX<int>()));
+         int y = std::min(sMaxMapPixelCoordY, std::max(0, obj.getPosY<int>()));
          
-         mGameObjects.push_back(std::make_unique<PowerUp>(obj.x, obj.y));   
+         mGameObjects.push_back(std::make_unique<PowerUp>(x, y));   
       }
       return true;
    };
 
    auto addWeaponUps = [&](const tmx::ObjectLayer& objLayer) {
       for(const tmx::Object& obj: objLayer.objects) {
-         float x = std::min(496.0f, std::max(0.0f, std::floor(obj.x)));
-         float y = std::min(496.0f, std::max(0.0f, std::floor(obj.y)));
+         int x = std::min(sMaxMapPixelCoordX, std::max(0, obj.getPosX<int>()));
+         int y = std::min(sMaxMapPixelCoordY, std::max(0, obj.getPosY<int>()));
          
-         mGameObjects.push_back(std::make_unique<WeaponUp>(obj.x, obj.y));   
+         mGameObjects.push_back(std::make_unique<WeaponUp>(x, y));   
+      }
+      return true;
+   };
+
+   auto addEnemies = [&](const tmx::ObjectLayer& objLayer) {
+      for(const tmx::Object& obj: objLayer.objects) {
+         int x = std::min(sMaxMapPixelCoordX, std::max(0, obj.getPosX<int>()));
+         int y = std::min(sMaxMapPixelCoordY, std::max(0, obj.getPosY<int>()));
+         mGameObjects.push_back(std::make_unique<Slime>(x, y));   
       }
       return true;
    };
@@ -127,6 +140,8 @@ bool GameWorld::init(const std::string& mapFilePath) {
          addPowerUps(objLayer);
       } else if(objLayer.name == "WeaponUps") {
          addWeaponUps(objLayer);
+      } else if(objLayer.name == "Enemies") {
+         addEnemies(objLayer);
       }
    }
 
@@ -134,9 +149,10 @@ bool GameWorld::init(const std::string& mapFilePath) {
    // Set up camera
    mCamera.setHeight(34); // height in 8px tiles. default value
    mCamera.setPosY(mMapHeight * kTileSize - mCamera.getHeight() * kTileSize); // set to map bottom
+   //mCamera.stop();
 
    // Spawn player(s)
-   static const float sTwoPlayersSpawnShift = 32.0f;
+   static const float sTwoPlayersSpawnShift = 48.0f;
 
    auto player0 = std::make_unique<Player>(248.0f - sTwoPlayersSpawnShift, 256.0f * 8.0f - 32.0f, 7);
    mpPlayers[0] = player0.get(); 
@@ -153,48 +169,84 @@ bool GameWorld::init(const std::string& mapFilePath) {
 void GameWorld::update(float dt) {
    assert(mIsInitialized);
 
-   mFreezeTimer.update(dt / 60.0f); //timer in seconds
+   mFreezeTimer.update(dt);
 
-   const uint16_t prevCamY = mCamera.getPosY();
-   mCamera.update(mFreezeTimer.hasExpired() ? dt : 0.0f);
+   const int prevCamY = mCamera.getPosY();
+   mCamera.update(dt);
 
    // move player as it follows camera movement
-   movePlayer(0, 0.0f, static_cast<float>(mCamera.getPosY() - prevCamY));
-   movePlayer(1, 0.0f, static_cast<float>(mCamera.getPosY() - prevCamY));
+   movePlayer(0, 0, mCamera.getPosY() - prevCamY);
+   movePlayer(1, 0, mCamera.getPosY() - prevCamY);
 
-   int16_t cameraMinY = mCamera.getPosY();
-   int16_t cameraMaxY = cameraMinY + mCamera.getHeight() * kTileSize;
+   int cameraMinY = mCamera.getPosY();
+   int cameraMaxY = cameraMinY + mCamera.getHeight() * kTileSize;
+
+   mActiveGameObjects.clear();
+   using EntityType = GameObject::EntityType;
 
    // update active objects
    for(auto& pObject: mGameObjects) {
-      if(!pObject->isActive()) continue;
-      pObject->update(dt, *this);
+      
+      // Skip inactive objects and frozen characters
+      if(!pObject->isActive()){
+         continue;
+      }
+
+      // Tricky part. Need some more research. Skip objects that are out of camera top edge except non projectile weapons as they may need to fly back
+      const bool isNonProjectileWeapon = pObject->getType() == EntityType::Weapon;
+
+      if (!isNonProjectileWeapon && !isObjectLowerEdgeWithinCameraView(pObject.get(), 0)) {
+         continue;
+      }
+
+      // update all objects except frozen enemies etc...
+      const int update_frames = (isWorldFrozen() && pObject->isFreezable()) ? 0 : 1;
+
+      pObject->update(update_frames, *this);
+      
+      // Check once agais as update(...) may inactivate object iself.
+      if(pObject->isActive()) mActiveGameObjects.push_back(pObject.get());
    }
 
-   // sort objects based on their collsion aabb lower edge
-   std::sort(mGameObjects.begin(), mGameObjects.end(), [](const std::unique_ptr<GameObject>& objA, const std::unique_ptr<GameObject>& objB) {
-     return (objA->getPosY() + objA->getCollisionAABB().y + objA->getCollisionAABB().h) < (objB->getPosY() + objB->getCollisionAABB().y + objB->getCollisionAABB().h); 
-   });
-
    // process collisions and deactivate objects by camera bounds if needed
-   using EntityType = GameObject::EntityType;
-   for(auto& pObject: mGameObjects) {
+   for(auto& pObject: mActiveGameObjects) {
       const auto& aabb = pObject->getCollisionAABB();
-      int16_t objMinX = static_cast<int16_t>(std::floor(pObject->getPosX())) + aabb.x;
-      int16_t objMinY = static_cast<int16_t>(std::floor(pObject->getPosY())) + aabb.y;
-      int16_t objMaxX = objMinX + aabb.w;
-      int16_t objMaxY = objMinY + aabb.h;
+      int objMinX = pObject->getPosX() + aabb.x;
+      int objMinY = pObject->getPosY() + aabb.y;
+      int objMaxX = objMinX + aabb.w;
+      int objMaxY = objMinY + aabb.h;
 
-      // skip objects that too far from camera bounds.
+      // skip objects that are too far from camera bounds.
       // we use horizontal camera bounds here. for vertical we add object height as a padding
       if(objMaxX < 0 || objMinX >= 512 || objMaxY < (cameraMinY - aabb.h) || objMinY >= (cameraMaxY + aabb.h)) {
          continue;
       }
 
       switch(pObject->getType()) {
-         case EntityType::Projectile:
-            processPlayerWeaponCollisions(*reinterpret_cast<Weapon*>(pObject.get()));
-            if(objMaxX < 0 || objMinX >= 512 || objMaxY < cameraMinY || objMinY >= cameraMaxY) pObject->setActive(false);
+         case EntityType::Weapon:
+            {
+               Weapon& weapon = *reinterpret_cast<Weapon*>(pObject);
+               
+               // deactivate projectiles that are out of screen
+               if(weapon.isProjectile() && (objMaxX < 0 || objMinX >= 512 || objMaxY < cameraMinY || objMinY >= cameraMaxY)) {
+                  pObject->setActive(false);
+                  break;
+               }
+
+               if(weapon.getOwner() == Weapon::OwnerType::Player) {
+                  processPlayerWeaponCollisions(weapon);
+               } else {
+                  processEnemyWeaponCollisions(weapon);
+               }
+            }
+            break;
+         case EntityType::Enemy:
+            if(objMinY >= cameraMaxY) {
+               pObject->setActive(false); // enemies spawns and moves top to bottom. remove if goes below camera view
+            } else {
+               processPlayerEnemyCollision(mpPlayers[(mFrameNumber + 0) % 2], *reinterpret_cast<Enemy*>(pObject));
+               processPlayerEnemyCollision(mpPlayers[(mFrameNumber + 1) % 2], *reinterpret_cast<Enemy*>(pObject));
+            }
             break;
          case EntityType::PowerUp:
          case EntityType::WeaponUp:
@@ -203,16 +255,16 @@ void GameWorld::update(float dt) {
                break;
             }
             // shuffle players from frame to frame
-            playerRedeemUpgrade(mpPlayers[(mFrameNumber + 0) % 2], *reinterpret_cast<Upgrade*>(pObject.get()));
-            playerRedeemUpgrade(mpPlayers[(mFrameNumber + 1) % 2], *reinterpret_cast<Upgrade*>(pObject.get()));
-            break;
-         case EntityType::Player:
-            playerRedeemExtra(*reinterpret_cast<Player*>(pObject.get()));
+            playerRedeemUpgrade(mpPlayers[(mFrameNumber + 0) % 2], *reinterpret_cast<Upgrade*>(pObject));
+            playerRedeemUpgrade(mpPlayers[(mFrameNumber + 1) % 2], *reinterpret_cast<Upgrade*>(pObject));
             break;
          default:
             break;
       }
    }
+
+   playerRedeemExtra(mpPlayers[(mFrameNumber + 0) % 2]);
+   playerRedeemExtra(mpPlayers[(mFrameNumber + 0) % 2]);
 
    // GC erasure pass
    size_t prev_objects_count = mGameObjects.size();
@@ -240,7 +292,26 @@ void GameWorld::update(float dt) {
 
    assert(mPendingObjects.empty());
 
+   // final pass before rendering
+
+   mActiveGameObjects.clear();
+
+   // update active objects
+   for(auto& pObject: mGameObjects) {
+      if(!pObject->isActive()) continue; // we can probably skip this check as GC pass removed inacive objects already
+      mActiveGameObjects.push_back(pObject.get());
+   }
+
+   // sort objects based on their collsion aabb lower edge
+   std::sort(mActiveGameObjects.begin(), mActiveGameObjects.end(), [](const GameObject* pObjA, const GameObject* pObjB) {
+     return (pObjA->getPosY() + pObjA->getCollisionAABB().y + pObjA->getCollisionAABB().h) < (pObjB->getPosY() + pObjB->getCollisionAABB().y + pObjB->getCollisionAABB().h); 
+   });
+
    mFrameNumber++;
+}
+
+void GameWorld::getContext(WorldContext& ctx) const {
+
 }
 
 }  // namespace KnightGame

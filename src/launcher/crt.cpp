@@ -66,8 +66,6 @@ void CRT::prepareEncoderTexture(uint16_t core_tex_width, uint16_t core_tex_heigh
             break;
     }
 
-    mpOSD->resize(mpOSD->getWidth(), encoded_tex_height); // only vertical resize. keep OSD width fixed.
-
     auto encoded_tex_format = GL_RGB16F;
     switch(mMode) {
         case Mode::RF:
@@ -142,6 +140,12 @@ void CRT::prepareEncoderTexture(uint16_t core_tex_width, uint16_t core_tex_heigh
         glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, sBlackBorderColor);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mHistoryTexture[i], 0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+
+    // Resize OSD if needed
+    if(mpOSD) {
+        mpOSD->resize(mCoreTextureWidth, mMode == Mode::VGA ? mCoreTextureHeight * 2 : mCoreTextureHeight); // Double scanlines in VGA mode
     }
 }
 
@@ -418,6 +422,7 @@ void CRT::drawGuiImpl() {
             // Render each item as a Selectable
             if (ImGui::Selectable(to_string(static_cast<Standard>(i)).c_str(), is_selected)) {
                 selected_standard_idx = i;
+                setStandard((Standard)selected_standard_idx);
             }
 
             if (is_selected) {
@@ -434,6 +439,7 @@ void CRT::drawGuiImpl() {
             // Render each item as a Selectable
             if (ImGui::Selectable(to_string(static_cast<Mode>(i)).c_str(), is_selected)) {
                 mode_standard_idx = i;
+                setMode((Mode)mode_standard_idx);
             }
 
             if (is_selected) {

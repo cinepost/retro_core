@@ -75,6 +75,18 @@ struct Object {
     float height = 0.0f;
     unsigned int gid = 0; 
     PropertyMap properties;
+
+    template<typename T>
+    T getPosX() const { return static_cast<T>(x); }
+
+    template<typename T>
+    T getPosY() const { return static_cast<T>(y); }
+
+    template<typename T>
+    T getWidth() const { return static_cast<T>(width); }
+
+    template<typename T>
+    T getHeight() const { return static_cast<T>(height); }
 };
 
 struct ObjectLayer {
@@ -212,7 +224,7 @@ namespace internal {
                 tilePos += 6;
                 std::string tileTag = tagBody.substr(tilePos, tileTagEnd - tilePos);
 
-                unsigned int localId = std::stoul(get_attr(tileTag, "id"));
+                unsigned int localId = static_cast<uint>(std::stoul(get_attr(tileTag, "id")));
                 std::string typeStr = get_attr(tileTag, "type");
                 PropertyMap& tileProperties = ts.tileProperties[localId];
                 tileProperties["type"] = typeStr;
@@ -222,7 +234,7 @@ namespace internal {
             }
 
             std::string tileTag = tagBody.substr(tilePos, tileTagEnd - tilePos);
-            unsigned int localId = std::stoul(get_attr(tileTag, "id"));
+            unsigned int localId = static_cast<uint>(std::stoul(get_attr(tileTag, "id")));
 
             std::string tileBody = tagBody.substr(tilePos, tileBlockEnd - tilePos);
             PropertyMap tileProps = parse_properties(tileBody, 0, tileBody.length());
@@ -268,7 +280,7 @@ class Loader {
                 size_t tsBlockEnd = content.find("</tileset>", tsPos);
 
                 Tileset ts;
-                ts.firstGid = std::stoul(internal::get_attr(tsTag, "firstgid"));
+                ts.firstGid = static_cast<uint>(std::stoul(internal::get_attr(tsTag, "firstgid")));
                 std::string extSource = internal::get_attr(tsTag, "source"); 
 
                 if (!extSource.empty()) {
@@ -332,7 +344,7 @@ class Loader {
                 while (std::getline(ss, tileId, ',')) {
                     tileId.erase(std::remove_if(tileId.begin(), tileId.end(), ::isspace), tileId.end());
                     if (!tileId.empty()) {
-                        layer.data.push_back(std::stoul(tileId));
+                        layer.data.push_back(static_cast<uint>(std::stoul(tileId)));
                     }
                 }
 
@@ -381,7 +393,7 @@ class Loader {
                     obj.y = attrY.empty() ? 0.0f : std::stof(attrY);
                     obj.width = attrW.empty() ? 0.0f : std::stof(attrW);
                     obj.height = attrH.empty() ? 0.0f : std::stof(attrH);
-                    obj.gid = attrG.empty() ? 0 : std::stoul(attrG);
+                    obj.gid = attrG.empty() ? 0 : static_cast<uint>(std::stoul(attrG));
 
                     if (!selfClosing) {
                         std::string objBody = groupBody.substr(objPos, objBlockEnd - objPos);

@@ -25,9 +25,9 @@ void StateManager::popState() {
     }
 }
 
-void StateManager::handleInput(retro_input_state_t input_cb) {
+void StateManager::handleInput(const Input& input) {
     if (!mStates.empty()) {
-        mStates.back()->handleStateInput(input_cb);
+        mStates.back()->handleStateInput(input);
     }
 }
 

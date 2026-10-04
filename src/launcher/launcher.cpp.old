@@ -8,7 +8,6 @@
 
 #include "libretro.h"
 
-#include <csignal>
 #include <iostream>
 #include <map>
 #include <vector>
@@ -20,10 +19,6 @@
 
 #include <stdarg.h>
 #include <stdio.h>
-
-#include <execinfo.h>
-#include <pthread.h>
-#include <unistd.h>
 
 #if defined(_WIN32) || defined(_WIN64)
     #include <windows.h>
@@ -39,27 +34,8 @@
     #define DLERROR()             dlerror()
 #endif
 
-#include "os.h"
 #include "settings.h"
 #include "crt.h"
-
-#if defined(_WIN32) || defined(_WIN64)
-    static_assert(false && "Not implemented");
-#else
-void posix_death_handler(int signum) {
-    const char* msg = "\n--- CRASH DETECTED ---\n";
-    write(STDERR_FILENO, msg, 24);
-
-    std::cerr << "Signal " << signum << " caught on Thread: " << pthread_self() << "\n";
-
-    void* array[30];
-    size_t size = backtrace(array, 30);
-
-    backtrace_symbols_fd(array, size, STDERR_FILENO);
-
-    std::exit(signum);
-}
-#endif
 
 RuntimeSettings g_settings;
 
@@ -212,9 +188,6 @@ std::thread g_core_thread;
 // --- Global Audio Tracking ---
 SDL_AudioDeviceID g_audio_device = 0;
 
-uint32_t g_target_audio_buffer_bytes = 0;
-uint32_t g_max_audio_buffer_bytes    = 0;
-
 // --- Global Volume Modifiers ---
 const float VOLUME_STEP = 0.05f;  // Increase/decrease by 5% increments
 
@@ -227,11 +200,6 @@ bool g_vol_hud_active = false;       // Flags whether the volume overlay is acti
 uint32_t g_video_mode_hud_timeout_ms = 0; // Timestamp when the overlay should vanish
 char g_video_mode_hud_string[32] = "";    // Stores string like "COMPONENT NTSC"
 bool g_video_mode_hud_active = true;      // Flags whether the video mode overlay is active
-
-// --- Playback Mode HUD Display States ---
-uint32_t g_playback_mode_hud_timeout_ms = 0; // Timestamp when the overlay should vanish
-char g_playback_mode_hud_string[32] = "";    // Stores string like "PAUSED, FF, PLAY"
-bool g_playback_mode_hud_active = true;      // Flags whether the video mode overlay is active
 
 // --- Audio Resampling Configuration States ---
 double g_core_sample_rate = 44100.0; // Overwritten by av_info during boot
@@ -358,50 +326,16 @@ int get_font_index(char c) {
     }
 }
 
-void pushVolumeBarToOSD(float audio_volume, RetroLauncher::OSD* pOsd) {
-    assert(pOsd);
 
-    static const std::string mutedStr = reinterpret_cast<const char*>(u8"MUTED 🔇");
+std::string getVolumeBarString(float audio_volume, int vol_string_len) {
+    if(audio_volume < 0.01) return "MUTED";
+    if(vol_string_len < 2) return "VOLUME []";
+    audio_volume = std::max(0.0f, std::min(1.0f, audio_volume));
 
-    const auto screen_rows = pOsd->getScreenRows();
-    const auto text_length = pOsd->getScreenCols() - 2; // leave 1 cell space on left and right of OSD screen
-
-    audio_volume = std::max(0.0f, std::min(2.0f, audio_volume));
-
-    if(audio_volume < 0.01f) {
-        pOsd->setTextRow(1, screen_rows - 2, mutedStr, 0, 255, 0);
-        return;
-    }
-
-    const std::string& volume_string = "VOLUME";
-    pOsd->setTextRow(1, screen_rows - 3, volume_string, 0, 255, 0);
-
-    const auto bars_string_len = text_length;
-    if(audio_volume <= 1.1f) {
-        static std::string volume_bars_string;
-        volume_bars_string.clear();
-
-        int filled_bars = static_cast<int>(std::floor(std::min(1.0f, audio_volume) * (float)bars_string_len));
-        int empty_bars = bars_string_len - filled_bars;
-
-        for(int i = 0; i < filled_bars; i++) volume_bars_string += reinterpret_cast<const char*>(u8"▮");
-        volume_bars_string += std::string(empty_bars, '-');
-
-        pOsd->addTextRow(1, screen_rows - 2, volume_bars_string, 0, 255, 0);
-    } else {
-        static std::string thick_bars_string;
-        static std::string thin_bars_string;
-        thick_bars_string.clear();
-        thin_bars_string.clear();
-
-        int filled_bars = static_cast<int>(std::floor(std::min(1.0f, audio_volume - 1.0f) * (float)bars_string_len));
-        int empty_bars = bars_string_len - filled_bars;
-
-        for(int i = 0; i < filled_bars; i++) thick_bars_string += reinterpret_cast<const char*>(u8"⏹");
-        for(int i = 0; i < empty_bars; i++) thin_bars_string += reinterpret_cast<const char*>(u8"▮");
-        pOsd->addTextRow(1, screen_rows - 2, thick_bars_string, 255, 255, 0);
-        pOsd->addTextRow(1 + filled_bars, screen_rows - 2, thin_bars_string, 0, 255, 0);
-    }
+    int inner_len = vol_string_len - 2;
+    int filled_bars = static_cast<int>(audio_volume * inner_len);
+    int empty_bars = inner_len - filled_bars;
+    return "VOLUME [" + std::string(filled_bars, '|') + std::string(empty_bars, '-') + "]";
 }
 
 // Draws a raw monochrome bit-mapped pixel character string onto the display
@@ -511,7 +445,7 @@ void cb_video_refresh(const void *data, unsigned width, unsigned height, size_t 
     g_video_buffer.height = height;
     g_video_buffer.pitch = pitch;
 
-    // Resize vector if frame size changes
+    // Resize vector if frame size changes (e.g., SNES hires mode changes)
     size_t total_bytes = height * pitch;
     if (g_video_buffer.pixels.size() < total_bytes / 4) {
         g_video_buffer.pixels.resize(total_bytes / 4);
@@ -548,113 +482,87 @@ size_t cb_audio_batch(const int16_t *data, size_t frames) {
 size_t cb_audio_batch_cb(const int16_t *data, size_t frames) {
     if (!data || frames == 0 || g_audio_device == 0) return 0;
 
-    // --- FAST FORWARD BYPASS MODE ---
-    if (!g_maintain_core_fps) {
-        // Bypass dynamic resampling entirely during un-throttled fast-forward
-        // We push audio 1:1 so it naturally speeds up/pitches up with the visual frame rate.
-        static std::vector<int16_t> ff_buffer;
-        ff_buffer.resize(frames * 2);
-        std::memcpy(ff_buffer.data(), data, frames * 2 * sizeof(int16_t));
-
-        // Apply volume modifier inline if active
-        if (g_settings.audio_volume != 1.0f) {
-            for (size_t i = 0; i < ff_buffer.size(); ++i) {
-                float sample = (float)ff_buffer[i] * g_settings.audio_volume;
-                ff_buffer[i] = (int16_t)std::clamp(sample, -32768.0f, 32767.0f);
-            }
-        }
-
-        // Never block the thread during fast-forward! 
-        // If SDL's internal push-buffer fills up, just drop excess or let it cap cleanly.
-        if (SDL_GetQueuedAudioSize(g_audio_device) < g_max_audio_buffer_bytes * 4) { // Generous ceiling for FF
-            SDL_QueueAudio(g_audio_device, ff_buffer.data(), ff_buffer.size() * sizeof(int16_t));
-        }
-        return frames;
-    }
-
+    // Measure real-time hardware buffer deviation
     uint32_t currently_queued = SDL_GetQueuedAudioSize(g_audio_device);
+    int32_t buffer_error = (int32_t)currently_queued - (int32_t)TARGET_BUFFER_BYTES;
 
-    // Dynamically determine frame metrics from the active hardware format
-    uint32_t bytes_per_frame = 2 * sizeof(int16_t); // or read dynamically from your spec
-    int32_t queued_frames = currently_queued / bytes_per_frame;
-    int32_t target_frames = g_target_audio_buffer_bytes / bytes_per_frame;
-    
-    int32_t frame_error = queued_frames - target_frames;
+    // Adjust target frequency based on buffer drift (Math Inverted Here)
+    // Positive error (too much data) -> lower drift_adjust -> lower target_rate -> reads faster
+    // Negative error (too little data) -> higher drift_adjust -> higher target_rate -> reads slower
+    double drift_adjust = 1.0 + (double)buffer_error / (MAX_BUFFER_BYTES * 20.0);
 
-    // 2. Corrected Dynamic Ratio Direction
-    // Too many frames queued -> frame_error is positive -> ratio becomes < 1.0 -> less output frames (drains queue)
-    // Too few frames queued -> frame_error is negative -> ratio becomes > 1.0 -> more output frames (fills queue)
-    double max_drift_pct = 0.005; // Tighten clamp bounds to 0.5% max shift for unnoticeable pitch warps
-    double drift_factor = (double)frame_error / target_frames; // Normalized error
-    
-     // Invert the adjustment behavior here
-    double resample_ratio = 1.0 - (drift_factor * max_drift_pct);
-    resample_ratio = std::clamp(resample_ratio, 0.995, 1.005);
+    drift_adjust = std::clamp(drift_adjust, 0.990, 1.01);
 
-    // Apply exponential smoothing to the RATIO itself, not the target rate
-    static double smoothed_ratio = 1.0;
-    smoothed_ratio = (smoothed_ratio * (1.0 - RESAMPLE_SMOOTH_FACTOR)) + (resample_ratio * RESAMPLE_SMOOTH_FACTOR);
+    // Apply exponential smoothing to the sample rate adjustment
+    double target_rate = g_core_sample_rate * drift_adjust;
+    g_current_resample_rate = (g_current_resample_rate * (1.0 - RESAMPLE_SMOOTH_FACTOR)) + (target_rate * RESAMPLE_SMOOTH_FACTOR);
 
-    // Compute precise output allocation
-    size_t out_frames = (size_t)(frames * smoothed_ratio);
+    // Compute dynamic output frame count
+    double resample_ratio = g_core_sample_rate / g_current_resample_rate;
+    size_t out_frames = (size_t)(frames / resample_ratio);
     if (out_frames == 0) return frames;
 
-    static std::vector<int16_t> output_buffer;
-    output_buffer.resize(out_frames * 2);
-
-    // 3. Precise Resampling via Step Increments
-    double src_step = (double)frames / (double)out_frames;
-    double src_pos = 0.0;
+    // Temporary storage vector for the resampled stereo stream
+    std::vector<int16_t> output_buffer(out_frames * 2);
 
     // Linear Interpolation Resampling Loop
+    bool resampling_done = false;
     for (size_t i = 0; i < out_frames; ++i) {
-        size_t index_low = (size_t)src_pos;
-        size_t index_high = (index_low + 1 < frames) ? index_low + 1 : index_low;
+        double src_index = i * resample_ratio;
+        size_t index_low = (size_t)src_index;
+        size_t index_high = index_low + 1;
 
-        double weight_high = src_pos - (double)index_low;
-        double weight_low = 1.0 - weight_high;
-
-        // Left Channel
-        float l1 = data[index_low * 2];
-        float l2 = data[index_high * 2];
-        float sample_l = (l1 * weight_low) + (l2 * weight_high);
-
-        // Right Channel
-        float r1 = data[index_low * 2 + 1];
-        float r2 = data[index_high * 2 + 1];
-        float sample_r = (r1 * weight_low) + (r2 * weight_high);
-
-        // Apply Volume Modifier inline to prevent multiple passes over the array
-        if (g_settings.audio_volume != 1.0f) {
-            sample_l *= g_settings.audio_volume;
-            sample_r *= g_settings.audio_volume;
+        // Clip constraints to avoid memory boundary overflows
+        if (index_high >= frames) {
+            index_high = index_low;
         }
 
-        // Clamp & Output
-        output_buffer[i * 2]     = (int16_t)std::clamp(sample_l, -32768.0f, 32767.0f);
-        output_buffer[i * 2 + 1] = (int16_t)std::clamp(sample_r, -32768.0f, 32767.0f);
+        double weight_high = src_index - index_low;
+        double weight_low = 1.0 - weight_high;
 
-        src_pos += src_step;
+        // Process Left Channel
+        int16_t s0_l = data[index_low * 2];
+        int16_t s1_l = data[index_high * 2];
+        output_buffer[i * 2] = (int16_t)(s0_l * weight_low + s1_l * weight_high);
+
+        // Process Right Channel
+        int16_t s0_r = data[index_low * 2 + 1];
+        int16_t s1_r = data[index_high * 2 + 1];
+        output_buffer[i * 2 + 1] = (int16_t)(s0_r * weight_low + s1_r * weight_high);
+        
+        resampling_done = true;
     }
 
-    // 4. Smart Queue Management to Prevent Starvation Blocking
-    // If the queue is drastically overstuffed, wait briefly instead of dropping data entirely
-    while (SDL_GetQueuedAudioSize(g_audio_device) >= MAX_BUFFER_BYTES) {
-        SDL_Delay(1); // Give the hardware thread a moment to catch up
+    // --- MULTIPLY SAMPLES BY GLOBAL VOLUME COEFFICIENT ---
+    if (g_settings.audio_volume != 1.0f) {
+        for (size_t i = 0; i < output_buffer.size(); ++i) {
+            // Apply volume scale factor as higher precision float math
+            float scaled_sample = (float)output_buffer[i] * g_settings.audio_volume;
+
+            // Strict hardware boundaries clamping to prevent audio wrapping distortion
+            if (scaled_sample > 32767.0f)  scaled_sample = 32767.0f;
+            if (scaled_sample < -32768.0f) scaled_sample = -32768.0f;
+
+            output_buffer[i] = (int16_t)scaled_sample;
+        }
     }
 
-    SDL_QueueAudio(g_audio_device, output_buffer.data(), output_buffer.size() * sizeof(int16_t));
+    // Hard protection boundary against absolute hardware blocking
+    if (currently_queued < MAX_BUFFER_BYTES) {
+        SDL_QueueAudio(g_audio_device, output_buffer.data(), output_buffer.size() * sizeof(int16_t));
+    }
+
     return frames;
 }
 
 
-// Core calls this to tell the frontend to read device hardware inputs
+// 1. Core calls this to tell the frontend to read device hardware inputs
 void cb_input_poll() {
     // We handle system events via SDL_PollEvent in the main loop instead.
     // This function can remain blank for keyboard states as long as SDL_PumpEvents updates under the hood.
 }
 
-// Core calls this to check if a specific button is currently pressed
+// 2. Core calls this to check if a specific button is currently pressed
 int16_t cb_input_state(unsigned port, unsigned device, unsigned index, unsigned id) {
     if (port != 0) return 0;
 
@@ -716,26 +624,6 @@ int16_t cb_input_state(unsigned port, unsigned device, unsigned index, unsigned 
     return 0;
 }
 
-void init_dynamic_audio_bounds(const SDL_AudioSpec& obtained_spec, float target_latency_ms) {
-    // 1. Calculate bytes per single audio frame (Channels * Bytes per sample)
-    // For 16-bit stereo, this equals: 2 channels * 2 bytes = 4 bytes per frame
-    uint32_t bytes_per_frame = obtained_spec.channels * SDL_AUDIO_BITSIZE(obtained_spec.format) / 8;
-
-    // 2. Calculate how many frames occur per millisecond
-    double frames_per_ms = (double)obtained_spec.freq / 1000.0;
-
-    // 3. Convert target millisecond latency to bytes
-    uint32_t target_frames = (uint32_t)(target_latency_ms * frames_per_ms);
-    g_target_audio_buffer_bytes  = target_frames * bytes_per_frame;
-
-    // 4. Set the maximum safety roof (typically 2x to 3x the target latency)
-    g_max_audio_buffer_bytes = g_target_audio_buffer_bytes * 2;
-    
-    // 5. Ensure it is aligned to a whole audio frame to prevent shearing artifacts
-    g_target_audio_buffer_bytes -= (g_target_audio_buffer_bytes % bytes_per_frame);
-    g_max_audio_buffer_bytes    -= (g_max_audio_buffer_bytes % bytes_per_frame);
-}
-
 // --- Controller Lifecycle Helpers ---
 void init_gamepad_subsystem() {
     // Ensure the GameController subsystem is booted up
@@ -783,19 +671,18 @@ void core_thread_loop() {
             continue; 
         }
 
+        // 1. Process Emulation Step
         global_retro_run(); // This fires cb_video_refresh internally
 
-        // Core Throttling 
-        if(g_maintain_core_fps) {
-            // If mplement blocking audio sync (e.g., SDL_QueueAudio blocking),
-            // the audio system will naturally throttle this loop, and we can skip this timer.
-            auto current_time = std::chrono::high_resolution_clock::now();
-            auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(current_time - last_time).count();
-            
-            if (elapsed_ns < target_frame_time_ns) {
-                uint64_t sleep_ns = target_frame_time_ns - elapsed_ns;
-                std::this_thread::sleep_for(std::chrono::nanoseconds(sleep_ns));
-            }
+        // 2. Core Throttling 
+        // Note: If you implement blocking audio sync (e.g., SDL_QueueAudio blocking),
+        // the audio system will naturally throttle this loop, and you can skip this timer.
+        auto current_time = std::chrono::high_resolution_clock::now();
+        auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(current_time - last_time).count();
+        
+        if (elapsed_ns < target_frame_time_ns) {
+            uint64_t sleep_ns = target_frame_time_ns - elapsed_ns;
+            std::this_thread::sleep_for(std::chrono::nanoseconds(sleep_ns));
         }
         last_time = std::chrono::high_resolution_clock::now();
     }
@@ -804,14 +691,6 @@ void core_thread_loop() {
 RetroLauncher::OSD* g_osd_ptr = nullptr;
 
 int main(int argc, char *argv[]) {
-    // Sigaction for multi-threaded signal handling
-    struct sigaction sa;
-    sa.sa_handler = posix_death_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-    sigaction(SIGSEGV, &sa, nullptr);
-
-
     loadINI(g_settings);
 
     if (argc < 2) {
@@ -943,7 +822,6 @@ int main(int argc, char *argv[]) {
     g_next_frame_time = SDL_GetPerformanceCounter();
 
     // 3. Initialize SDL2 & OpenGL Window
-    //SDL_SetHint(SDL_HINT_AUDIODRIVER, "alsa");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) < 0) {
         std::cerr << "SDL Init Error: " << SDL_GetError() << std::endl;
         return 1;
@@ -974,7 +852,6 @@ int main(int argc, char *argv[]) {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Allow navigating layout menus with keyboard keys
-    io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange; // Stop ImGui from resetting the cursor back to visible when we don't want it to
 
     // OPTIONAL: Explicitly name or path your ini file (defaults to "imgui.ini")
     io.IniFilename = "launcher.ini"; 
@@ -987,25 +864,19 @@ int main(int argc, char *argv[]) {
     ImGui_ImplOpenGL3_Init("#version 330 core");
 
     // Dynamic SDL Audio Queue Configuration
-    SDL_AudioSpec target_spec, obtained_spec;
+    SDL_AudioSpec target_spec;
     SDL_zero(target_spec);
 
     // Core timing dictates target output frequency (e.g. 44100 or 48000 Hz)
     target_spec.freq     = (int)av_info.timing.sample_rate; 
     target_spec.format   = AUDIO_S16SYS; // Signed 16-bit native endian system audio
     target_spec.channels = 2;            // Standard Stereo channels
-    target_spec.samples  = 512;          // Low latency hardware chunk partition size
+    target_spec.samples  = 1024;         // Low latency hardware chunk partition size
     target_spec.callback = nullptr;      // Crucial: Set to null to explicitly use the Queue API
 
-    g_audio_device = SDL_OpenAudioDevice(
-        nullptr, 0, &target_spec, &obtained_spec, SDL_AUDIO_ALLOW_ANY_CHANGE
-    );
-
     std::cout << "Core requested audio sample rate is " << target_spec.freq << std::endl;
-    std::cout << "Core obtainer audio sample rate is " << obtained_spec.freq << std::endl;
 
-    init_dynamic_audio_bounds(obtained_spec, 20.0f /* 40.0f */);
-
+    g_audio_device = SDL_OpenAudioDevice(nullptr, 0, &target_spec, nullptr, 0);
     if (g_audio_device == 0) {
         std::cerr << "Audio device fallback failure: " << SDL_GetError() << std::endl;
     } else {
@@ -1064,7 +935,6 @@ int main(int argc, char *argv[]) {
 
             bool volume_changed = false;
             bool video_mode_changed = false;
-            bool playback_changed = false;
 
             if (event.type == SDL_KEYDOWN) {
                 switch (event.key.keysym.sym) {
@@ -1073,15 +943,11 @@ int main(int argc, char *argv[]) {
                         break;
                     case SDLK_F11:
                         g_settings.imgui_hud_show = !g_settings.imgui_hud_show;
-
-                        break;
                     case SDLK_F4:
                         g_maintain_core_fps = !g_maintain_core_fps;
-                        playback_changed = true;
                         break;
-                    case SDLK_PAUSE:
+                    case SDLK_p:
                         g_core_paused = !g_core_paused;
-                        playback_changed = true;
                         break;
                     case SDLK_s: 
                         g_settings.use_shaders = !g_settings.use_shaders;
@@ -1113,26 +979,6 @@ int main(int argc, char *argv[]) {
                         break;
 
                 }
-            }
-
-            if(playback_changed) {
-                g_playback_mode_hud_timeout_ms = SDL_GetTicks() + 2000;
-                g_playback_mode_hud_active = true;
-
-                static const std::string ffIcondStr = "\u23E9";
-                static const std::string playIconStr = "\u23F5";
-                static const std::string pauseIconStr = "\u23F8";
-                static const std::string recIconStr = "\u23FA";
-
-                static std::string playback_mode_string;
-                if(g_core_paused) {
-                    playback_mode_string = "PAUSE " + pauseIconStr;
-                } else if (!g_maintain_core_fps) {
-                    playback_mode_string = "FF " + ffIcondStr;
-                } else {
-                    playback_mode_string = "PLAY " + playIconStr;
-                }
-                snprintf(g_playback_mode_hud_string, sizeof(g_playback_mode_hud_string), "%s", playback_mode_string.c_str());
             }
 
             // Video Mode Change Processing Logic
@@ -1278,11 +1124,11 @@ int main(int argc, char *argv[]) {
         uint64_t hud_now = SDL_GetPerformanceCounter();
         uint64_t hud_elapsed_ticks = hud_now - g_hud_last_time;
         double hud_elapsed_sec = (double)hud_elapsed_ticks / (double)SDL_GetPerformanceFrequency();
-        g_hud_current_fps = (float)((double)g_hud_frame_count / hud_elapsed_sec);
 
         if (g_settings.show_fps) {
             // Recalculate and update the text string once every 0.5 seconds to keep it readable
             if (hud_elapsed_sec >= 0.5) {
+                g_hud_current_fps = (float)((double)g_hud_frame_count / hud_elapsed_sec);
                 snprintf(g_hud_string, sizeof(g_hud_string), "%.1f FPS", g_hud_current_fps);
                 
                 // Reset tracking states for the next window window slice
@@ -1302,6 +1148,7 @@ int main(int argc, char *argv[]) {
             glColor3f(0.0f, 1.0f, 0.0f);
             draw_hud_string(-0.95f, 0.90f, g_hud_string, px_scale);
             
+            // Reset color to default solid white so it doesn't tint the game frame
             glColor3f(1.0f, 1.0f, 1.0f);
         }
 
@@ -1317,12 +1164,8 @@ int main(int argc, char *argv[]) {
                 float scale = 0.004f;
 
                 if(g_osd_ptr) {
-                    int v_pos = g_osd_ptr->getHeight() - 56;
-                    //g_osd_ptr->setText(10, v_pos, getVolumeBarString(g_settings.audio_volume, 20), 0, 255, 0);
-                    //g_osd_ptr->addText(10, v_pos + 28, getVolumeBarString(g_settings.audio_volume, 20), 0, 255, 0);
-
-                    pushVolumeBarToOSD(g_settings.audio_volume, g_osd_ptr);
-
+                    int v_pos = g_osd_ptr->getHeight() - 28;
+                    g_osd_ptr->setText(10, v_pos, getVolumeBarString(g_settings.audio_volume, 20), 0, 255, 0);
                 } else {
                     // Draw Drop Shadow (Flat Black offset background)
                     glColor3f(0.0f, 0.0f, 0.0f);
@@ -1332,6 +1175,7 @@ int main(int argc, char *argv[]) {
                     glColor3f(0.0f, 1.0f, 1.0f);
                     draw_hud_string(vol_x, vol_y, g_vol_hud_string, scale);
 
+                    // Reset color to default solid white so it doesn't tint the game frame
                     glColor3f(1.0f, 1.0f, 1.0f);
                 }
             }
@@ -1360,27 +1204,14 @@ int main(int argc, char *argv[]) {
                     glColor3f(0.0f, 1.0f, 1.0f);
                     draw_hud_string(vol_x, vol_y, g_video_mode_hud_string, scale);
 
+                    // Reset color to default solid white so it doesn't tint the game frame
                     glColor3f(1.0f, 1.0f, 1.0f);
-                }
-            }
-        }
-
-        // --- DYNAMIC PLAYBACK POP-UP RENDERING ---
-        if(g_playback_mode_hud_active) {
-            if (SDL_GetTicks() > g_playback_mode_hud_timeout_ms) {
-                g_playback_mode_hud_active = false; // Gracefully shut off drawing pass
-                if(g_osd_ptr) g_osd_ptr->clear();
-            } else {
-                if(g_osd_ptr) {
-                    g_osd_ptr->setText(10, 10, g_playback_mode_hud_string, 0, 255, 0, 255);
                 }
             }
         }
 
         // ImGui
         if(g_settings.imgui_hud_show) {
-            SDL_ShowCursor(SDL_ENABLE);
-
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplSDL2_NewFrame();
             ImGui::NewFrame(); 
@@ -1406,8 +1237,6 @@ int main(int argc, char *argv[]) {
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-        } else {
-            SDL_ShowCursor(SDL_DISABLE);
         }
 
         SDL_GL_SwapWindow(window);

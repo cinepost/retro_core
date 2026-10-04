@@ -24,6 +24,7 @@ set(SOURCES
     ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp    
     ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_sdlrenderer2.cpp
+    ${EXTERNAL_DIR}/lodepng/lodepng.cpp
 )
 
 add_executable(launcher ${SOURCES})

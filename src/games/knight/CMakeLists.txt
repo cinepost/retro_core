@@ -65,17 +65,24 @@ file(GLOB_RECURSE ASSET_FILES
     "${ASSETS_SRC_DIR}/maps/*.tsx"
 
     # sprites and tiles
+    "${ASSETS_SRC_DIR}/images/ascii_font.png"
     "${ASSETS_SRC_DIR}/images/level_01_tiles.png"
     "${ASSETS_SRC_DIR}/images/common_sprites.png"
+    "${ASSETS_SRC_DIR}/images/boss_01_sprites.png"
 
     # bgm
+    "${ASSETS_SRC_DIR}/music/suno_menu_loop.mp3"
     "${ASSETS_SRC_DIR}/music/player_dying.mp3"
     
     # sfx
     "${ASSETS_SRC_DIR}/sfx/amikon_logo_sound.mp3"
+    "${ASSETS_SRC_DIR}/sfx/menu_select.mp3"
+    "${ASSETS_SRC_DIR}/sfx/menu_highlight.mp3"
     "${ASSETS_SRC_DIR}/sfx/shot_arrow.mp3"
+    "${ASSETS_SRC_DIR}/sfx/shot_boomerang.mp3"
     "${ASSETS_SRC_DIR}/sfx/extra_block_hit.mp3"
     "${ASSETS_SRC_DIR}/sfx/extra_block_take.mp3"
+    "${ASSETS_SRC_DIR}/sfx/enemy_kill.mp3"
 
     # geneal
     "${ASSETS_SRC_DIR}/music/*.mp3"
@@ -112,6 +119,7 @@ add_library(knight MODULE
     core.cpp
     game.cpp
     game_world.cpp
+    ai_player.cpp
     boot.cpp
     intro.cpp
     level_summary.cpp

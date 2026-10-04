@@ -421,6 +421,8 @@ class MsxPPU_BASE: public Abstract_PPU<Platform::MSX> {
 			mVRAM[vram_address % kVRAMSizeBytes] = value;
 		}
 
+		void vramBlockSet(uint32_t vram_address, uint8_t value, uint16_t count);
+
 		template<typename T>
 		void vramBlockSet(uint32_t vram_address, const T& value, uint16_t count);
 
@@ -756,7 +758,12 @@ class MsxPPU final: public MsxPPU_BASE {
 
 				uint8_t color_index = sprite.attribs.color;
 
-				if constexpr (SCREEN_MODE != ScreenMode::VSCREEN_1 && SCREEN_MODE != ScreenMode::VSCREEN_2 && SCREEN_MODE != ScreenMode::VSCREEN_3) {
+				if constexpr (
+					SCREEN_MODE != ScreenMode::VSCREEN_1 && 
+					SCREEN_MODE != ScreenMode::VSCREEN_2 && 
+					SCREEN_MODE != ScreenMode::VSCREEN_3 && 
+					SCREEN_MODE != ScreenMode::VSCREEN_5) 
+				{
 					assert(false && "Fetch color from table");
 				} 
 

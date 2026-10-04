@@ -42,7 +42,7 @@ class OscillatorBase {
     	}
 
     	// Shared Modifiers
-    	void swapMinMaxValues() { T tmp = mMinValue; mMinValue = mMaxValue; mMaxValue = tmp; }
+    	void swapMinMaxValues() { V tmp = mMinValue; mMinValue = mMaxValue; mMaxValue = tmp; }
     	void setMinValue(V minValue) { mMinValue = minValue; }
     	void setMaxValue(V maxValue) { mMaxValue = maxValue; }
 	    void setPeriod(T period) { mPeriod = period > static_cast<T>(0) ? period : static_cast<T>(1); }
@@ -264,6 +264,40 @@ class PulseOscillator : public OscillatorBase<T, V> {
 	    }
 };
 
+template <typename T, typename V>
+class CycleOscillator {
+	public:
+	    CycleOscillator(T period, const std::vector<V>& values): mPeriod(period), mTimer(static_cast<T>(0)), mValues(values), mValuesCount(values.size()) {
+
+	    }
+
+	    V getValue() const {
+	        // Convert raw time context to [0.0, 1.0]
+	        double progress = static_cast<double>(this->mTimer) / static_cast<double>(this->mPeriod);
+	        
+	        size_t idx = std::floor(progress * static_cast<double>(mValuesCount));
+	        assert(idx < mValues.size());
+
+	        return mValues[idx];
+	    }
+
+	    void update(T dt) {
+	        mTimer += dt;
+
+	        // Clean boundary wrap
+	        if (mTimer >= mPeriod) {
+	            mTimer -= mPeriod;
+	        } else if (mTimer < static_cast<T>(0)) {
+	            mTimer += mPeriod;
+	        }
+	    }
+
+	private:
+		T 				mPeriod; 	// Total duration of one cycle
+    	T 				mTimer;     // Tracks raw elapsed time [0, m_period)
+    	std::vector<V>  mValues;
+    	size_t          mValuesCount;
+};
 
 }  // namespace RetroCore
 

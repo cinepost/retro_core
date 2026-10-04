@@ -208,9 +208,9 @@ void main() {
 
         float splitAmount = distSq * aberration;
 
-        float blurR = distFromCenter * edgeDefocus * 0.024; // Medium
+        float blurR = distFromCenter * edgeDefocus * 0.020; // Medium
         float blurG = distFromCenter * edgeDefocus * 0.016; // Sharpest
-        float blurB = distFromCenter * edgeDefocus * 0.032; // Blurriest
+        float blurB = distFromCenter * edgeDefocus * 0.024; // Blurriest
 
         vec2 uvR = uv - misalignment - (radialDir * splitAmount);
         vec2 uvG = uv;

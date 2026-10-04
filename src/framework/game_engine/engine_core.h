@@ -3,6 +3,7 @@
 
 #include "asset_manager.h"
 #include "sound_engine.h"
+#include "input.h"
 
 #include <chrono>
 #include <thread>
@@ -30,7 +31,7 @@ class StateManager {
         void changeState(std::unique_ptr<GameState> pState);
         void pushState(std::unique_ptr<GameState> pState);
         void popState();
-        void handleInput(retro_input_state_t input_cb);
+        void handleInput(const Input& input);
         void update(double dt);
         void render();
         void reset();
@@ -109,8 +110,10 @@ class EngineCore {
                 m_input_poll_cb();
             }
 
+            mInputTracker.poll(m_input_state_cb);
+
             // Drive engine updates (fixed delta time provided by target frame rate)
-            mStateManager.handleInput(m_input_state_cb);
+            mStateManager.handleInput(mInputTracker);
             mStateManager.update(mTargetFrameDuration);
 
             // Render state layout into virtual PPU structures
@@ -204,6 +207,8 @@ class EngineCore {
 
         std::array<uint8_t, PPU::getScreenWidth() * PPU::getScreenHeight() * 4> mFramebuffer;
         std::vector<int16_t> mPCMMixBuffer;
+
+        Input        mInputTracker;
 
         StateManager mStateManager;
         AssetManager mAssetManager; // Central container initialized once 

@@ -27,10 +27,10 @@
         },
         "/home/max/mnt/misc_hdd/dev/retro_core/src/games/knight/assets/maps/level_01.tmx": {
             "scale": 2,
-            "selectedLayer": 5,
+            "selectedLayer": 7,
             "viewCenter": {
-                "x": 307,
-                "y": 1761.75
+                "x": 187.5,
+                "y": 1762.25
             }
         },
         "/home/max/mnt/misc_hdd/dev/retro_core/src/games/knight/assets/maps/level_01_tileset.tsx": {
@@ -78,7 +78,7 @@
     },
     "last.exportedFilePath": "/home/max/mnt/misc_hdd/dev/retro_core/games/virt_msx/KnightmareW/tiled_data",
     "last.externalTilesetPath": "/home/max/mnt/misc_hdd/dev/retro_core/games/virt_msx/KnightmareW/tiled_data",
-    "last.imagePath": "/home/max/mnt/misc_hdd/dev/retro_core/src/games/knight/assets/images",
+    "last.imagePath": "/home/max/mnt/misc_hdd/dev/retro_core/games/virt_msx/KnightmareW/tiled_data",
     "map.height": 256,
     "map.lastUsedExportFilter": "JSON map files (*.tmj *.json)",
     "map.lastUsedFormat": "tmx",
@@ -87,14 +87,15 @@
     "map.width": 64,
     "openFiles": [
         "/home/max/mnt/misc_hdd/dev/retro_core/src/games/knight/assets/maps/level_01.tmx",
-        "/home/max/mnt/misc_hdd/dev/retro_core/src/games/knight/assets/maps/level_01_tileset.tsx"
+        "/home/max/mnt/misc_hdd/dev/retro_core/src/games/knight/assets/maps/level_01_tileset.tsx",
+        "/home/max/mnt/misc_hdd/dev/retro_core/src/games/knight/assets/maps/objects.tsx"
     ],
     "project": "level_0_01.tiled-project",
     "property.type": "string",
     "recentFiles": [
-        "/home/max/mnt/misc_hdd/dev/retro_core/src/games/knight/assets/maps/level_01.tmx",
-        "/home/max/mnt/misc_hdd/dev/retro_core/src/games/knight/assets/maps/level_01_tileset.tsx",
         "/home/max/mnt/misc_hdd/dev/retro_core/src/games/knight/assets/maps/objects.tsx",
+        "/home/max/mnt/misc_hdd/dev/retro_core/src/games/knight/assets/maps/level_01_tileset.tsx",
+        "/home/max/mnt/misc_hdd/dev/retro_core/src/games/knight/assets/maps/level_01.tmx",
         "level_01.tmx",
         "level_01_tileset.tsx",
         "/home/max/mnt/misc_hdd/dev/retro_core/src/games/knight/assets/maps/extras.tsx",

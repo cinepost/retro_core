@@ -176,6 +176,11 @@ class SoundEngine {
             mpBgmTrack.reset();
         }
 
+        void stopAll() const {
+            stopBGM();
+            mpActiveSFX.clear();
+        }
+
         void crossfadeBGM(std::unique_ptr<AudioSource> pNextTrack, float fadeDurationSeconds) {
             if (!mpBgmTrack) {
                 playBGM(std::move(pNextTrack));
@@ -222,6 +227,7 @@ class SoundEngine {
             mTempReadBuffer.resize(sampleCount);
 
             std::fill(mIntMixBuffer.begin(), mIntMixBuffer.end(), 0);
+            std::fill(mTempReadBuffer.begin(), mTempReadBuffer.end(), 0);
 
             // Crossfade
             if (mpActiveBgmTrackCrossfade && mpActiveBgmTrackCrossfade->isFinished()) {
@@ -241,7 +247,7 @@ class SoundEngine {
                 }
             }
 
-            // mix all concurrent SFX channels (MP3, WAV, VGM tracking nodes alike!)
+            // mix all concurrent SFX channels
             for (auto& sfx : mpActiveSFX) {
                 std::memset(mTempReadBuffer.data(), 0, sampleCount * sizeof(int16_t));
                 sfx->renderPCM(mTempReadBuffer.data(), sampleCount);
@@ -253,7 +259,9 @@ class SoundEngine {
             // clip safeguard clamp & downsample back down to 16-bit PCM bounds
             for (size_t i = 0; i < sampleCount; ++i) {
                 int32_t mixedSample = mIntMixBuffer[i];
-                mixedSample = (mixedSample * static_cast<int32_t>(mMasterVolume)) >> 16;
+
+                // TODO: cant use bit shifts like thin on signed integers
+                //mixedSample = (mixedSample * static_cast<int32_t>(mMasterVolume)) >> 16;
 
                 // Strict hard clamping safeguards to prevent nasty numerical wrapping errors
                 if (mixedSample > 32767)  mixedSample = 32767;

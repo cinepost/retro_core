@@ -40,7 +40,6 @@ std::string readTextFile(const std::string& filePath) {
 }
 
 std::vector<unsigned char> readBinaryFile(const std::string& filePath) {
-    // Open the file in binary mode and move the file pointer immediately to the end
     std::ifstream file(filePath, std::ios::binary | std::ios::ate);
     
     if (!file.is_open()) {
@@ -59,4 +58,9 @@ std::vector<unsigned char> readBinaryFile(const std::string& filePath) {
 
     std::cerr << "Error: Failed to read data from " << filePath << std::endl;
     return {};
+}
+
+std::string getCoreConfigPath(const std::string& core_path) {
+    std::string core_name = std::filesystem::path(core_path).stem().string();
+    return "config/" + core_name + ".ini";
 }

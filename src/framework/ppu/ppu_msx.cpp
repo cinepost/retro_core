@@ -19,6 +19,10 @@ static inline bool read_bit(std::uint16_t word, uint8_t position) {
     return (word >> position) & 1;
 }
 
+void MsxPPU_BASE::vramBlockSet(uint32_t vram_address, uint8_t value, uint16_t count) {
+	std::memset(&mVRAM[vram_address], value, count);
+}
+
 template<typename T>
 void MsxPPU_BASE::vramBlockSet(uint32_t vram_address, const T& value, uint16_t count) {
 	for(uint16_t i = 0; i < count; ++i) {

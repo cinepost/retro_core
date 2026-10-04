@@ -22,7 +22,7 @@ void main() {
     float uStep = 1.0 / float(uAtlasGridSize.x);
     float vStep = 1.0 / float(uAtlasGridSize.y);
     float uStart = float(charId % uint(uAtlasGridSize.x)) * uStep;
-    float vStart = float(charId / uint(uAtlasGridSize.y)) * vStep;
+    float vStart = float(charId / uint(uAtlasGridSize.x)) * vStep;
 
     vec2 delta = (uGlyphSize / uScreenResolution) * 2.0;
     vec4 basePos = gl_in[0].gl_Position;

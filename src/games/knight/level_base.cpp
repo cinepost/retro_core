@@ -1,4 +1,6 @@
 #include "levels.h"
+
+#include "sound_files.h"
 #include "framework/ppu/ppu_msx_utils.h"
 
 #include <random> 
@@ -12,11 +14,10 @@ namespace KnightGame {
 static_assert(GameWorld::kMapTilesCount == GameWorld::kMapExtrasCount * 4);
 
 static const float kCameraScrollSpeed = 0.2f;
-static const std::string sCommonSpritesFilename = "images/common_sprites.png";
-static const std::string sPlayerDyingBGMFilename = "music/player_dying.mp3";
+static const std::string kCommonSpritesFilename = "images/common_sprites.png";
 
 void LevelBase::enter() {
-    mPlayerDyingBgmAsset = mAssetManager.getAsset(sPlayerDyingBGMFilename);
+    mPlayerDyingBgmAsset = mAssetManager.getAsset(kPlayerDyingBgmFileName);
 
     auto pBgmTrack = std::make_unique<GameEngine::MP3Stream>(mMainBgmAsset.pData, mMainBgmAsset.sizeInBytes, true /* loop music */);
     mSoundEngine.playBGM(std::move(pBgmTrack));
@@ -62,8 +63,8 @@ void LevelBase::enter() {
     using PATTERN_32D = PPU::MsxPPU_BASE::PATTERN_32D;
     
     std::vector<PATTERN_32D> sprite_patterns;
-    if(mAssetManager.hasFile(sCommonSpritesFilename)) {
-        const Asset sprites_asset = mAssetManager.getAsset(sCommonSpritesFilename);
+    if(mAssetManager.hasFile(kCommonSpritesFilename)) {
+        const Asset sprites_asset = mAssetManager.getAsset(kCommonSpritesFilename);
         sprite_patterns = RetroCore::PPU::Utils::MSX::loadTilesFromIndexedPNG<PATTERN_32D>(sprites_asset.pData, sprites_asset.sizeInBytes, nullptr /* ref palette */, false /* dont skip empty tiles */);
     
         for(uint16_t i = 0; i < static_cast<uint16_t>(sprite_patterns.size()); ++i) {
@@ -97,6 +98,7 @@ void LevelBase::update(double dt) {
     if(!mBossReached) {
         if(mWorld.getCamera().getPosY() == 0) {
             mWorld.getCamera().stop();
+            mWorld.wakeUpBoss();
             mBossReached = true;
         }
     }
@@ -110,22 +112,20 @@ void LevelBase::update(double dt) {
     }
 }
 
-void LevelBase::handleInput(retro_input_state_t input_cb) {
-    if (!input_cb) return;
-
+void LevelBase::handleInput(const Input& input) {
     // Poll the Libretro gamepad state keys
     for(uint i = 0; i < 2; ++i) {
-        bool pressUp    = input_cb(i, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_UP);
-        bool pressDown  = input_cb(i, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_DOWN); 
-        bool pressLeft  = input_cb(i, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_LEFT);
-        bool pressRight = input_cb(i, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_RIGHT);
-        bool pressFire  = input_cb(i, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_B);
+        bool pressUp    = input.isHeld(i, RETRO_DEVICE_ID_JOYPAD_UP);
+        bool pressDown  = input.isHeld(i, RETRO_DEVICE_ID_JOYPAD_DOWN); 
+        bool pressLeft  = input.isHeld(i, RETRO_DEVICE_ID_JOYPAD_LEFT);
+        bool pressRight = input.isHeld(i, RETRO_DEVICE_ID_JOYPAD_RIGHT);
+        bool pressFire  = input.isHeld(i, RETRO_DEVICE_ID_JOYPAD_B);
 
         // Move the player directly based on the button readings
-        if (pressUp)    mWorld.movePlayer(i,  0.0f, -1.0f);
-        if (pressDown)  mWorld.movePlayer(i,  0.0f,  1.0f);
-        if (pressLeft)  mWorld.movePlayer(i, -1.0f,  0.0f);
-        if (pressRight) mWorld.movePlayer(i,  1.0f,  0.0f);
+        if (pressUp)    mWorld.movePlayer(i,  0, -1);
+        if (pressDown)  mWorld.movePlayer(i,  0,  1);
+        if (pressLeft)  mWorld.movePlayer(i, -1,  0);
+        if (pressRight) mWorld.movePlayer(i,  1,  0);
         if (pressFire)  mWorld.firePlayer(i);
     }
 }
@@ -148,7 +148,7 @@ void LevelBase::render() {
     const uint16_t vertical_camera_offset_px = mWorld.getCamera().getPosY();
 
     mSpriteList.clear();
-    for(const auto& pObject: mWorld.getGameObjects()) {
+    for(const GameObject* pObject: mWorld.getActiveGameObjects()) {
         assert(pObject);
         pObject->draw(mSpriteList);
 

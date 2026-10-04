@@ -4,6 +4,8 @@
 #define GL_GLEXT_PROTOTYPES 1
 #include <SDL2/SDL_opengl.h>
 
+#include "stb/stb_truetype.h"
+
 #include <string>
 
 #include "shader.h"
@@ -60,11 +62,14 @@ class OSD {
         GLuint getOSDTextureID() const { return mOSDTextureID; }
         GLuint getFontAtlasTextureID() const { return mFontTextureID; }
 
+        uint32_t getScreenCols() const { return mScreenCols; }
+        uint32_t getScreenRows() const { return mScreenRows; }
+
         virtual uint32_t getWidth() const { return mWidth; }
         virtual uint32_t getHeight() const { return mHeight; }
 
-        virtual uint32_t getGlyphWidth() const { return 18; }
-        virtual uint32_t getGlyphHeight() const { return 18; }
+        virtual uint32_t getGlyphWidth() const { return mCellWidth; }
+        virtual uint32_t getGlyphHeight() const { return mCellHeight; }
 
         OsdElement& getElement(uint32_t id) {
             assert(id < mOsdElements.size());
@@ -79,14 +84,31 @@ class OSD {
 
         uint32_t addElement();
         uint32_t addElement(const OsdElement& element);
-        void addText(int x, int y, const std::string& string, float r = 0.0f, float g = 1.0f, float b = 0.0f, float a = 1.0f);
-        void setText(int x, int y, const std::string& string, float r = 0.0f, float g = 1.0f, float b = 0.0f, float a = 1.0f);
+
+        void addTextRow(uint32_t col, uint32_t row, const std::string& text, float r = 0.0f, float g = 1.0f, float b = 0.0f, float a = 1.0f) {
+            assert(mScreenCols > 0 && mScreenRows > 0);
+            if(row >= mScreenRows || col >= mScreenCols) return;
+            addText(static_cast<int>(col * mCellWidth), static_cast<int>(row * mCellHeight), text, r, g, b, a);
+        }
+
+        void setTextRow(uint32_t col, uint32_t row, const std::string& text, float r = 0.0f, float g = 1.0f, float b = 0.0f, float a = 1.0f) {
+            assert(mScreenCols > 0 && mScreenRows > 0);
+            if(row >= mScreenRows || col >= mScreenCols) return;
+            setText(static_cast<int>(col * mCellWidth), static_cast<int>(row * mCellHeight), text, r, g, b, a);
+        }
+
+        void addText(int x, int y, const std::string& text, float r = 0.0f, float g = 1.0f, float b = 0.0f, float a = 1.0f);
+        void setText(int x, int y, const std::string& text, float r = 0.0f, float g = 1.0f, float b = 0.0f, float a = 1.0f);
         void setText(const OsdElement& element);
         void setText(const std::vector<OsdElement>& elements);
 
         size_t getActiveVertexCount() const { return mActiveVertexCount; }
 
-        bool generateAtlasAtRuntime(const std::string& fontPath, GLuint& outTexID, int cellWidth = 16, int cellHeight = 16, float fontPixelHeight = 14.0f);
+        bool generateAtlasAtRuntimePNG(const std::string& fontPath, GLuint& outTexID, unsigned int cellWidth = 16, unsigned int cellHeight = 16);
+        bool generateAtlasAtRuntimeTTF(const std::string& fontPath, GLuint& outTexID, unsigned int cellWidth = 16, unsigned int cellHeight = 16, float fontPixelHeight = 14.0f);
+
+        static std::vector<uint32_t> decodeUTF8(const std::string& str);
+        static std::vector<uint32_t> getAllFontCodepoints(const stbtt_fontinfo& font);
 
     private:
         void updateBuffers();
@@ -109,6 +131,8 @@ class OSD {
         uint32_t mFontAtlasHeight;
         uint32_t mFontAtlasGridSizeX;
         uint32_t mFontAtlasGridSizeY;
+        uint32_t mCellWidth;
+        uint32_t mCellHeight;
 
         size_t mActiveVertexCount;
 
@@ -116,6 +140,9 @@ class OSD {
         bool mInitialized;
 
         size_t mFrameCount;
+
+        std::unordered_map<uint32_t, uint32_t> mCodepointToGridID; // TTF rendering path needs it
+        bool mTTF = false;
 };
 
 }  // namespace RetroLauncher
